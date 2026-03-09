@@ -202,6 +202,14 @@ function relayStatsSummary(): string {
     );
 }
 
+function summarizeThrowable(Throwable $throwable): string {
+    return sprintf(
+        '%s: %s',
+        $throwable::class,
+        $throwable->getMessage(),
+    );
+}
+
 function work(
     Relay\Relay $relay,
     int $ops,
@@ -213,6 +221,10 @@ function work(
     $start = microtime(true);
     $lastReport = $start;
     $done = 0;
+    $exceptions = 0;
+    $reconnectFailures = 0;
+    $lastException = null;
+    $terminatedEarly = false;
 
     logmsg(
         sprintf(
@@ -226,8 +238,44 @@ function work(
     );
 
     for ($i = 0; $i < $ops; $i++) {
-        $context->rngCmd($relay);
-        $done++;
+        try {
+            $context->rngCmd($relay);
+            $done++;
+        } catch (Throwable $throwable) {
+            $exceptions++;
+            $lastException = summarizeThrowable($throwable);
+
+            logmsg(
+                sprintf(
+                    'command exception after %d/%d ops: %s; reconnecting',
+                    $done,
+                    $ops,
+                    $lastException,
+                )
+            );
+
+            try {
+                $relay = connectRelay();
+                logmsg('reconnect succeeded');
+            } catch (Throwable $reconnectThrowable) {
+                $exceptions++;
+                $reconnectFailures++;
+                $lastException = sprintf(
+                    'reconnect failed: %s',
+                    summarizeThrowable($reconnectThrowable),
+                );
+                $terminatedEarly = true;
+
+                logmsg(
+                    sprintf(
+                        'worker exiting early after reconnect failure: %s',
+                        $lastException,
+                    )
+                );
+
+                break;
+            }
+        }
 
         $now = microtime(true);
         if (($now - $lastReport) < $reportInterval) {
@@ -239,11 +287,14 @@ function work(
 
         logmsg(
             sprintf(
-                'progress: %d/%d ops (%.1f%%), %.0f ops/sec, %s',
+                'progress: %d/%d ops (%.1f%%), %.0f ops/sec, exceptions=%d reconnect_failures=%d%s, %s',
                 $done,
                 $ops,
                 ($done / $ops) * 100.0,
                 $rate,
+                $exceptions,
+                $reconnectFailures,
+                $lastException !== null ? sprintf(' last_exception="%s"', $lastException) : '',
                 relayStatsSummary(),
             )
         );
@@ -256,10 +307,14 @@ function work(
 
     logmsg(
         sprintf(
-            'worker finished: %d ops in %.3fs (%.0f ops/sec), %s',
+            'worker %s: %d ops in %.3fs (%.0f ops/sec), exceptions=%d reconnect_failures=%d%s, %s',
+            $terminatedEarly ? 'exited early' : 'finished',
             $done,
             $elapsed,
             $rate,
+            $exceptions,
+            $reconnectFailures,
+            $lastException !== null ? sprintf(' last_exception="%s"', $lastException) : '',
             relayStatsSummary(),
         )
     );
