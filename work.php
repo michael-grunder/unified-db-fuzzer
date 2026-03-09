@@ -14,6 +14,7 @@ final class Context {
         'mset'    => 'string',
         'set'     => 'string',
         'zadd'    => 'zset',
+        'zrange'  => 'zset',
     ];
 
     public function __construct(
@@ -53,7 +54,7 @@ final class Context {
 
         for ($i = 0; $i < $n; $i++) {
             $key = sprintf('%s:%d', $type, rand(0, $this->keys));
-            $res[$key] = uniqid('', true);
+            $res[$key] = (string) hrtime(true);
         }
 
         return $res;
@@ -82,7 +83,7 @@ final class Context {
 
         for ($i = 0; $i < $n; $i++) {
             $field = sprintf('field:%d', rand(0, $this->mems));
-            $res[$field] = uniqid('', true);
+            $res[$field] = (string) hrtime(true);
         }
 
         return $res;
@@ -90,13 +91,19 @@ final class Context {
 
     public function rngZadd(Relay\Relay $relay): mixed {
         $key = $this->rngKey('zset');
-        $score = mt_rand() / mt_getrandmax();
-        $member = uniqid('', true);
+        $args = [$key];
+        $n = rand(1, $this->mems);
 
-        return $relay->zadd($key, $score, $member);
+        for ($i = 0; $i < $n; $i++) {
+            $args[] = hrtime(true);
+            $args[] = sprintf('member:%d', rand(0, $this->mems));
+        }
+
+        return $relay->zadd(...$args);
     }
 
-    public function rngCmd(Relay\Relay $relay): mixed {
+    /** @return array{cmd: string, result: mixed, key: ?string, keys: ?array<int, string>} */
+    public function execRandom(Relay\Relay $relay): array {
         $cmd = array_rand($this->cmds);
         $type = $this->cmds[$cmd];
 
@@ -104,34 +111,47 @@ final class Context {
             case 'del':
             case 'get':
             case 'hgetall':
-                return $relay->{$cmd}($this->rngKey($type));
+                $key = $this->rngKey($type);
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}($key), 'key' => $key, 'keys' => null];
 
             case 'hmget':
-                return $relay->{$cmd}(
-                    $this->rngKey($type),
+                $key = $this->rngKey($type);
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}(
+                    $key,
                     $this->rngFields(),
-                );
+                ), 'key' => $key, 'keys' => null];
 
             case 'hmset':
-                return $relay->{$cmd}(
-                    $this->rngKey($type),
+                $key = $this->rngKey($type);
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}(
+                    $key,
                     $this->rngHash(),
-                );
+                ), 'key' => $key, 'keys' => null];
 
             case 'mget':
-                return $relay->{$cmd}($this->rngKeys($type));
+                $keys = $this->rngKeys($type);
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}($keys), 'key' => null, 'keys' => $keys];
 
             case 'mset':
-                return $relay->{$cmd}($this->rngKeyVals($type));
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}($this->rngKeyVals($type)), 'key' => null, 'keys' => null];
 
             case 'set':
-                return $relay->{$cmd}(
-                    $this->rngKey($type),
-                    uniqid('', true),
-                );
+                $key = $this->rngKey($type);
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}(
+                    $key,
+                    (string) hrtime(true),
+                ), 'key' => $key, 'keys' => null];
 
             case 'zadd':
-                return $this->rngZadd($relay);
+                return ['cmd' => $cmd, 'result' => $this->rngZadd($relay), 'key' => null, 'keys' => null];
+            case 'zrange':
+                $key = $this->rngKey($type);
+                return ['cmd' => $cmd, 'result' => $relay->{$cmd}(
+                    $key,
+                    '0',
+                    '-1',
+                    ['withscores' => true],
+                ), 'key' => $key, 'keys' => null];
             default:
                 throw new RuntimeException("Unhandled command: $cmd");
         } // switch
@@ -210,6 +230,57 @@ function summarizeThrowable(Throwable $throwable): string {
     );
 }
 
+function timestampAgeNs(mixed $value, int $nowNs): ?int {
+    if (is_int($value)) {
+        $timestamp = $value;
+    } elseif (is_string($value) && preg_match('/^\d+$/', $value) === 1) {
+        $timestamp = (int) $value;
+    } elseif (is_float($value) && is_finite($value) && $value >= 0) {
+        $timestamp = (int) round($value);
+    } else {
+        return null;
+    }
+
+    $age = $nowNs - $timestamp;
+
+    return $age >= 0 ? $age : null;
+}
+
+function extractKeyAgeNs(string $cmd, mixed $result): ?int {
+    $nowNs = hrtime(true);
+
+    return match ($cmd) {
+        'get' => timestampAgeNs($result, $nowNs),
+        'mget', 'hmget', 'hgetall', 'zrange' => (function () use ($result, $nowNs): ?int {
+            if (!is_array($result)) {
+                return null;
+            }
+
+            $oldestAge = null;
+
+            foreach ($result as $value) {
+                $age = timestampAgeNs($value, $nowNs);
+                if ($age === null) {
+                    continue;
+                }
+
+                $oldestAge = $oldestAge === null ? $age : max($oldestAge, $age);
+            }
+
+            return $oldestAge;
+        })(),
+        default => null,
+    };
+}
+
+function formatAge(?string $oldestKey, ?int $oldestAgeNs): string {
+    if ($oldestKey === null || $oldestAgeNs === null) {
+        return 'oldest=none';
+    }
+
+    return sprintf('%s age=%ds', $oldestKey, (int) floor($oldestAgeNs / 1_000_000_000));
+}
+
 function work(
     Relay\Relay $relay,
     int $ops,
@@ -224,6 +295,8 @@ function work(
     $exceptions = 0;
     $reconnectFailures = 0;
     $lastException = null;
+    $oldestKey = null;
+    $oldestAgeNs = null;
     $terminatedEarly = false;
 
     logmsg(
@@ -239,7 +312,30 @@ function work(
 
     for ($i = 0; $i < $ops; $i++) {
         try {
-            $context->rngCmd($relay);
+            $op = $context->execRandom($relay);
+            $cmd = $op['cmd'];
+            $result = $op['result'];
+
+            if ($op['keys'] !== null && is_array($result)) {
+                $nowNs = hrtime(true);
+
+                foreach ($op['keys'] as $index => $readKey) {
+                    $age = timestampAgeNs($result[$index] ?? null, $nowNs);
+                    if ($age === null || ($oldestAgeNs !== null && $age <= $oldestAgeNs)) {
+                        continue;
+                    }
+
+                    $oldestAgeNs = $age;
+                    $oldestKey = $readKey;
+                }
+            } elseif ($op['key'] !== null) {
+                $age = extractKeyAgeNs($cmd, $result);
+                if ($age !== null && ($oldestAgeNs === null || $age > $oldestAgeNs)) {
+                    $oldestAgeNs = $age;
+                    $oldestKey = $op['key'];
+                }
+            }
+
             $done++;
         } catch (Throwable $throwable) {
             $exceptions++;
@@ -295,6 +391,7 @@ function work(
                 $exceptions,
                 $reconnectFailures,
                 $lastException !== null ? sprintf(' last_exception="%s"', $lastException) : '',
+                formatAge($oldestKey, $oldestAgeNs),
                 relayStatsSummary(),
             )
         );
@@ -315,6 +412,7 @@ function work(
             $exceptions,
             $reconnectFailures,
             $lastException !== null ? sprintf(' last_exception="%s"', $lastException) : '',
+            formatAge($oldestKey, $oldestAgeNs),
             relayStatsSummary(),
         )
     );
