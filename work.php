@@ -132,9 +132,9 @@ final class Context {
 
             case 'zadd':
                 return $this->rngZadd($relay);
-        }
-
-        throw new RuntimeException("Unhandled command: $cmd");
+            default:
+                throw new RuntimeException("Unhandled command: $cmd");
+        } // switch
     }
 }
 
@@ -147,6 +147,59 @@ function connectRelay(): Relay\Relay {
     $relay->connect('localhost', 6379);
 
     return $relay;
+}
+
+function humanBytes(int $bytes): string {
+    static $units = ['b', 'k', 'm', 'g', 't'];
+
+    $value = (float) $bytes;
+    $unit = 0;
+
+    while ($value >= 1024.0 && $unit < count($units) - 1) {
+        $value /= 1024.0;
+        $unit++;
+    }
+
+    if ($unit === 0) {
+        return sprintf('%db', (int) $value);
+    }
+
+    if ($value >= 10.0) {
+        return sprintf('%.0f%s', $value, $units[$unit]);
+    }
+
+    return sprintf('%.1f%s', $value, $units[$unit]);
+}
+
+function relayStatsSummary(): string {
+    $stats = Relay\Relay::stats();
+
+    $memory = $stats['memory'] ?? [];
+    $cstats = $stats['stats'] ?? [];
+    $usage = $stats['usage'] ?? [];
+
+    $used = (int) ($memory['used'] ?? 0);
+    $total = (int) ($memory['total'] ?? 0);
+    $hits = (int) ($cstats['hits'] ?? 0);
+    $misses = (int) ($cstats['misses'] ?? 0);
+    $oom = (int) ($cstats['oom'] ?? 0);
+    $errors = (int) ($cstats['errors'] ?? 0);
+    $requests = (int) ($cstats['requests'] ?? 0);
+    $activeReq = (int) ($usage['active_requests'] ?? 0);
+    $maxActiveReq = (int) ($usage['max_active_requests'] ?? 0);
+
+    return sprintf(
+        'cache=%s/%s hits=%d misses=%d oom=%d errs=%d req=%d act=%d max=%d',
+        humanBytes($used),
+        humanBytes($total),
+        $hits,
+        $misses,
+        $oom,
+        $errors,
+        $requests,
+        $activeReq,
+        $maxActiveReq,
+    );
 }
 
 function work(
@@ -163,11 +216,12 @@ function work(
 
     logmsg(
         sprintf(
-            'worker started: ops=%d keys=%d mems=%d report_interval=%.1fs',
+            'worker started: ops=%d keys=%d mems=%d report_interval=%.1fs %s',
             $ops,
             $keys,
             $mems,
             $reportInterval,
+            relayStatsSummary(),
         )
     );
 
@@ -185,11 +239,12 @@ function work(
 
         logmsg(
             sprintf(
-                'progress: %d/%d ops (%.1f%%), %.0f ops/sec',
+                'progress: %d/%d ops (%.1f%%), %.0f ops/sec, %s',
                 $done,
                 $ops,
                 ($done / $ops) * 100.0,
                 $rate,
+                relayStatsSummary(),
             )
         );
 
@@ -201,10 +256,11 @@ function work(
 
     logmsg(
         sprintf(
-            'worker finished: %d ops in %.3fs (%.0f ops/sec)',
+            'worker finished: %d ops in %.3fs (%.0f ops/sec), %s',
             $done,
             $elapsed,
             $rate,
+            relayStatsSummary(),
         )
     );
 }
@@ -238,10 +294,11 @@ if ($keys <= 0 || $mems <= 0 || $ops <= 0 || $workers < 0) {
 if ($workers === 0) {
     logmsg(
         sprintf(
-            'running in non-forking mode: ops=%d keys=%d mems=%d',
+            'running in non-forking mode: ops=%d keys=%d mems=%d interval=%.1fs',
             $ops,
             $keys,
             $mems,
+            $interval,
         )
     );
 
@@ -312,81 +369,4 @@ while ($remaining !== []) {
 $elapsed = microtime(true) - $start;
 
 logmsg(sprintf('all workers completed in %.3fs', $elapsed));
-
-$stats = Relay\Relay::stats();
-[$used, $total] = [$stats['memory']['used'], $stats['memory']['total']];
-[$hits, $misses, $oom] = [
-    $stats['stats']['hits'], $stats['stats']['misses'],
-    $stats['stats']['oom'],
-];
-
-logmsg(sprintf("relay stats: memory=%s/%s hits=%d misses=%d oom=%d\n",
-    number_format($used), number_format($total), $hits, $misses, $oom));
-
-//❯ php -r 'var_dump(\Relay\Relay::stats());'
-//array(5) {
-//  ["usage"]=>
-//  array(5) {
-//    ["total_requests"]=>
-//    int(1)
-//    ["active_requests"]=>
-//    int(1)
-//    ["max_active_requests"]=>
-//    int(1)
-//    ["free_epoch_records"]=>
-//    int(128)
-//    ["free_leases"]=>
-//    int(32)
-//  }
-//  ["stats"]=>
-//  array(13) {
-//    ["requests"]=>
-//    int(0)
-//    ["misses"]=>
-//    int(0)
-//    ["hits"]=>
-//    int(0)
-//    ["errors"]=>
-//    int(0)
-//    ["oom"]=>
-//    int(0)
-//    ["filtered"]=>
-//    int(0)
-//    ["ops_per_sec"]=>
-//    int(0)
-//    ["bytes_sent"]=>
-//    int(0)
-//    ["bytes_received"]=>
-//    int(0)
-//    ["command_usec"]=>
-//    int(0)
-//    ["rinit_usec"]=>
-//    int(23)
-//    ["rshutdown_usec"]=>
-//    int(0)
-//    ["sigio_usec"]=>
-//    int(0)
-//  }
-//  ["memory"]=>
-//  array(4) {
-//    ["total"]=>
-//    int(16777216)
-//    ["limit"]=>
-//    int(16777216)
-//    ["active"]=>
-//    int(55008)
-//    ["used"]=>
-//    int(55008)
-//  }
-//  ["endpoints"]=>
-//  array(0) {
-//  }
-//  ["hashes"]=>
-//  array(2) {
-//    ["pid"]=>
-//    int(2388327)
-//    ["runid"]=>
-//    string(36) "019cd3f0-5832-7832-8215-cc669a9f5d25"
-//  }
-//}
-
+logmsg('final ' . relayStatsSummary());
