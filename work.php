@@ -278,7 +278,7 @@ function formatAge(?string $oldestKey, ?int $oldestAgeNs): string {
         return 'oldest=none';
     }
 
-    return sprintf('%s age=%ds', $oldestKey, (int) floor($oldestAgeNs / 1_000_000_000));
+    return sprintf('%s age=%dusec', $oldestKey, (int) floor($oldestAgeNs / 1_000));
 }
 
 function work(
@@ -426,6 +426,7 @@ $opt = getopt(
         'workers:',
         'ops:',
         'interval:',
+        'flush',
     ]
 );
 
@@ -434,6 +435,7 @@ $mems = (int) ($opt['mems'] ?? 10);
 $workers = (int) ($opt['workers'] ?? 4);
 $ops = (int) ($opt['ops'] ?? 1000);
 $interval = (float) ($opt['interval'] ?? 1.0);
+$flush = isset($opt['flush']);
 
 if ($keys <= 0 || $mems <= 0 || $ops <= 0 || $workers < 0) {
     fwrite(
@@ -442,6 +444,10 @@ if ($keys <= 0 || $mems <= 0 || $ops <= 0 || $workers < 0) {
         "[--ops N] [--interval SECONDS]\n"
     );
     exit(1);
+}
+
+if ($flush) {
+    connectRelay()->flushdb();
 }
 
 if ($workers === 0) {
