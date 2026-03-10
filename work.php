@@ -17,10 +17,29 @@ final class Context {
         'zrange'  => 'zset',
     ];
 
+    /** @var list<string> */
+    private array $activeCmds;
+
     public function __construct(
         public readonly int $keys,
         public readonly int $mems,
-    ) {}
+        array $cmdTypes = [],
+    ) {
+        $allowedTypes = array_fill_keys($cmdTypes, true);
+        $this->activeCmds = [];
+
+        foreach ($this->cmds as $cmd => $type) {
+            if ($cmdTypes !== [] && ($type === null || !isset($allowedTypes[$type]))) {
+                continue;
+            }
+
+            $this->activeCmds[] = $cmd;
+        }
+
+        if ($this->activeCmds === []) {
+            throw new InvalidArgumentException('No commands available for selected --cmd-types filter');
+        }
+    }
 
     public function rngKey(?string $type): string {
         static $types = [
@@ -104,7 +123,7 @@ final class Context {
 
     /** @return array{cmd: string, result: mixed, key: ?string, keys: ?array<int, string>} */
     public function execRandom(Relay\Relay $relay): array {
-        $cmd = array_rand($this->cmds);
+        $cmd = $this->activeCmds[array_rand($this->activeCmds)];
         $type = $this->cmds[$cmd];
 
         switch ($cmd) {
@@ -273,12 +292,46 @@ function extractKeyAgeNs(string $cmd, mixed $result): ?int {
     };
 }
 
-function formatAge(?string $oldestKey, ?int $oldestAgeNs): string {
+function formatAge(?string $oldestKey, ?int $oldestAgeNs, string $ageUnit): string {
     if ($oldestKey === null || $oldestAgeNs === null) {
         return 'oldest=none';
     }
 
-    return sprintf('%s age=%dusec', $oldestKey, (int) floor($oldestAgeNs / 1_000));
+    return match ($ageUnit) {
+        'usec' => sprintf('%s age=%dusec', $oldestKey, (int) floor($oldestAgeNs / 1_000)),
+        'ms' => sprintf('%s age=%.3fms', $oldestKey, $oldestAgeNs / 1_000_000),
+        'seconds' => sprintf('%s age=%.6fseconds', $oldestKey, $oldestAgeNs / 1_000_000_000),
+    };
+}
+
+function formatOps(int $ops): string {
+    return $ops < 0 ? 'forever' : (string) $ops;
+}
+
+/** @return list<string> */
+function parseCmdTypes(string|array|false|null $rawCmdTypes): array {
+    if ($rawCmdTypes === false || $rawCmdTypes === null) {
+        return [];
+    }
+
+    $parts = is_array($rawCmdTypes) ? $rawCmdTypes : [$rawCmdTypes];
+    $types = [];
+
+    foreach ($parts as $part) {
+        foreach (explode(',', $part) as $type) {
+            $type = trim($type);
+            if ($type === '') {
+                continue;
+            }
+
+            $types[] = $type;
+        }
+    }
+
+    $types = array_values(array_unique($types));
+    sort($types);
+
+    return $types;
 }
 
 function work(
@@ -287,8 +340,10 @@ function work(
     int $keys,
     int $mems,
     float $reportInterval = 1.0,
+    string $ageUnit = 'usec',
+    array $cmdTypes = [],
 ): void {
-    $context = new Context($keys, $mems);
+    $context = new Context($keys, $mems, $cmdTypes);
     $start = microtime(true);
     $lastReport = $start;
     $done = 0;
@@ -301,16 +356,18 @@ function work(
 
     logmsg(
         sprintf(
-            'worker started: ops=%d keys=%d mems=%d report_interval=%.1fs %s',
-            $ops,
+            'worker started: ops=%s keys=%d mems=%d report_interval=%.1fs age_unit=%s %s %s',
+            formatOps($ops),
             $keys,
             $mems,
             $reportInterval,
+            $ageUnit,
+            $cmdTypes === [] ? 'cmd_types=all' : 'cmd_types=' . implode(',', $cmdTypes),
             relayStatsSummary(),
         )
     );
 
-    for ($i = 0; $i < $ops; $i++) {
+    for ($i = 0; $ops < 0 || $i < $ops; $i++) {
         try {
             $op = $context->execRandom($relay);
             $cmd = $op['cmd'];
@@ -345,7 +402,7 @@ function work(
                 sprintf(
                     'command exception after %d/%d ops: %s; reconnecting',
                     $done,
-                    $ops,
+                    formatOps($ops),
                     $lastException,
                 )
             );
@@ -383,15 +440,15 @@ function work(
 
         logmsg(
             sprintf(
-                'progress: %d/%d ops (%.1f%%), %.0f ops/sec, exceptions=%d reconnect_failures=%d%s, %s',
+                'progress: %d/%s ops%s, %.0f ops/sec, exceptions=%d reconnect_failures=%d%s, %s',
                 $done,
-                $ops,
-                ($done / $ops) * 100.0,
+                formatOps($ops),
+                $ops > 0 ? sprintf(' (%.1f%%)', ($done / $ops) * 100.0) : '',
                 $rate,
                 $exceptions,
                 $reconnectFailures,
                 $lastException !== null ? sprintf(' last_exception="%s"', $lastException) : '',
-                formatAge($oldestKey, $oldestAgeNs),
+                formatAge($oldestKey, $oldestAgeNs, $ageUnit),
                 relayStatsSummary(),
             )
         );
@@ -404,15 +461,16 @@ function work(
 
     logmsg(
         sprintf(
-            'worker %s: %d ops in %.3fs (%.0f ops/sec), exceptions=%d reconnect_failures=%d%s, %s',
+            'worker %s: %d/%s ops in %.3fs (%.0f ops/sec), exceptions=%d reconnect_failures=%d%s, %s',
             $terminatedEarly ? 'exited early' : 'finished',
             $done,
+            formatOps($ops),
             $elapsed,
             $rate,
             $exceptions,
             $reconnectFailures,
             $lastException !== null ? sprintf(' last_exception="%s"', $lastException) : '',
-            formatAge($oldestKey, $oldestAgeNs),
+            formatAge($oldestKey, $oldestAgeNs, $ageUnit),
             relayStatsSummary(),
         )
     );
@@ -426,6 +484,8 @@ $opt = getopt(
         'workers:',
         'ops:',
         'interval:',
+        'age-unit:',
+        'cmd-types:',
         'flush',
     ]
 );
@@ -435,13 +495,37 @@ $mems = (int) ($opt['mems'] ?? 10);
 $workers = (int) ($opt['workers'] ?? 4);
 $ops = (int) ($opt['ops'] ?? 1000);
 $interval = (float) ($opt['interval'] ?? 1.0);
+$ageUnit = (string) ($opt['age-unit'] ?? 'usec');
+$cmdTypes = parseCmdTypes($opt['cmd-types'] ?? null);
 $flush = isset($opt['flush']);
 
-if ($keys <= 0 || $mems <= 0 || $ops <= 0 || $workers < 0) {
+if (!in_array($ageUnit, ['usec', 'ms', 'seconds'], true)) {
+    fwrite(STDERR, "Invalid --age-unit value. Expected one of: usec, ms, seconds\n");
+    exit(1);
+}
+
+if ($cmdTypes !== []) {
+    $validCmdTypes = ['hash', 'string', 'zset'];
+    $invalidCmdTypes = array_values(array_diff($cmdTypes, $validCmdTypes));
+
+    if ($invalidCmdTypes !== []) {
+        fwrite(
+            STDERR,
+            sprintf(
+                "Invalid --cmd-types value(s): %s. Expected a comma-separated subset of: %s\n",
+                implode(', ', $invalidCmdTypes),
+                implode(', ', $validCmdTypes),
+            )
+        );
+        exit(1);
+    }
+}
+
+if ($keys <= 0 || $mems <= 0 || $ops === 0 || $workers < 0) {
     fwrite(
         STDERR,
         "usage: php fuzz.php [--keys N] [--mems N] [--workers N] " .
-        "[--ops N] [--interval SECONDS]\n"
+        "[--ops N] [--interval SECONDS] [--age-unit usec|ms|seconds] [--cmd-types string,hash,zset]\n"
     );
     exit(1);
 }
@@ -453,27 +537,31 @@ if ($flush) {
 if ($workers === 0) {
     logmsg(
         sprintf(
-            'running in non-forking mode: ops=%d keys=%d mems=%d interval=%.1fs',
-            $ops,
+            'running in non-forking mode: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
+            formatOps($ops),
             $keys,
             $mems,
             $interval,
+            $ageUnit,
+            $cmdTypes === [] ? 'all' : implode(',', $cmdTypes),
         )
     );
 
     $relay = connectRelay();
-    work($relay, $ops, $keys, $mems, $interval);
+    work($relay, $ops, $keys, $mems, $interval, $ageUnit, $cmdTypes);
     exit(0);
 }
 
 logmsg(
     sprintf(
-        'spawning %d workers: ops=%d keys=%d mems=%d interval=%.1fs',
+        'spawning %d workers: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
         $workers,
-        $ops,
+        formatOps($ops),
         $keys,
         $mems,
         $interval,
+        $ageUnit,
+        $cmdTypes === [] ? 'all' : implode(',', $cmdTypes),
     )
 );
 
@@ -495,7 +583,7 @@ for ($i = 0; $i < $workers; $i++) {
     }
 
     $relay = connectRelay();
-    work($relay, $ops, $keys, $mems, $interval);
+    work($relay, $ops, $keys, $mems, $interval, $ageUnit, $cmdTypes);
     exit(0);
 }
 
