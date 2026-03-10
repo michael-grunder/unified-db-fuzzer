@@ -10,6 +10,12 @@ Run the worker harness with:
 php bin/fuzz work --keys=100 --mems=10 --workers=4 --ops=1000
 ```
 
+Write worker logs to a file instead of stderr with:
+
+```bash
+php bin/fuzz --log-file=/tmp/fuzz.log --keys=100 --mems=10 --workers=4 --ops=1000
+```
+
 Run the client killer in a separate session with:
 
 ```bash
@@ -26,6 +32,7 @@ Useful options:
 
 - `--cmd-types=string,hash,zset` filters the registered fuzz commands by Redis data type.
 - `--seed=1234` makes command selection and argument generation reproducible.
+- `--log-file=/tmp/fuzz.log` writes compact Monolog output like `[1710111222.123456 INFO] spawned worker pid=1234` to a file instead of stderr.
 - `--timeout=1.5` sets the Relay connection timeout in seconds.
 - `--read-timeout=5.0` sets the Relay read timeout in seconds.
 - `--flush` clears the current database before workers start.

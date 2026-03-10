@@ -79,4 +79,55 @@ final class WorkCommandTest extends TestCase
             $application->options->commandTypes,
         ));
     }
+
+    #[Test]
+    public function it_logs_to_console_using_the_compact_monolog_format(): void
+    {
+        $tester = new CommandTester(new WorkCommand(
+            new class() implements WorkApplication {
+                public function run(WorkOptions $options, WorkerLogger $logger): int
+                {
+                    $logger->log('worker ready');
+
+                    return 0;
+                }
+            },
+        ));
+
+        $exitCode = $tester->execute([]);
+
+        self::assertSame(0, $exitCode);
+        self::assertMatchesRegularExpression('/\[\d+\.\d{6} INFO\] worker ready/', $tester->getDisplay(true));
+    }
+
+    #[Test]
+    public function it_can_log_to_a_file_instead_of_console_output(): void
+    {
+        $logFile = sys_get_temp_dir() . '/fuzz-work-command-' . uniqid('', true) . '.log';
+
+        try {
+            $tester = new CommandTester(new WorkCommand(
+                new class() implements WorkApplication {
+                    public function run(WorkOptions $options, WorkerLogger $logger): int
+                    {
+                        $logger->log('worker ready');
+
+                        return 0;
+                    }
+                },
+            ));
+
+            $exitCode = $tester->execute([
+                '--log-file' => $logFile,
+            ]);
+
+            self::assertSame(0, $exitCode);
+            self::assertSame('', $tester->getDisplay(true));
+            self::assertMatchesRegularExpression('/\[\d+\.\d{6} INFO\] worker ready/', (string) file_get_contents($logFile));
+        } finally {
+            if (is_file($logFile)) {
+                unlink($logFile);
+            }
+        }
+    }
 }

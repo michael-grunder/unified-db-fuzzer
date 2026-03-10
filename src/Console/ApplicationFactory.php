@@ -13,6 +13,7 @@ use Mgrunder\Fuzz\Runtime\RelayClientFactory;
 use Mgrunder\Fuzz\Runtime\RelayAdminClientFactory;
 use Mgrunder\Fuzz\Runtime\RelayStatsProvider;
 use Mgrunder\Fuzz\Runtime\WorkerOrchestrator;
+use Mgrunder\Fuzz\Runtime\WorkerLoggerFactory;
 use Symfony\Component\Console\Application;
 
 final class ApplicationFactory
@@ -33,6 +34,7 @@ final class ApplicationFactory
                     CommandRegistry::default(),
                     new RelayStatsProvider(),
                 ),
+                new WorkerLoggerFactory(),
             ),
         ]);
         $application->setDefaultCommand($defaultCommand, true);

@@ -7,10 +7,10 @@ namespace Mgrunder\Fuzz\Console\Command;
 use InvalidArgumentException;
 use Mgrunder\Fuzz\Fuzz\AgeUnit;
 use Mgrunder\Fuzz\Fuzz\RedisDataType;
-use Mgrunder\Fuzz\Runtime\ConsoleLogger;
 use Mgrunder\Fuzz\Runtime\StalenessThresholds;
 use Mgrunder\Fuzz\Runtime\WorkApplication;
 use Mgrunder\Fuzz\Runtime\WorkOptions;
+use Mgrunder\Fuzz\Runtime\WorkerLoggerFactory;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -24,6 +24,7 @@ final class WorkCommand extends Command
 
     public function __construct(
         private readonly WorkApplication $application,
+        private readonly WorkerLoggerFactory $workerLoggerFactory = new WorkerLoggerFactory(),
     ) {
         parent::__construct(self::NAME);
     }
@@ -55,6 +56,7 @@ final class WorkCommand extends Command
                 'Comma-separated Redis data type filters.',
             )
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'Base RNG seed. Defaults to a random seed.')
+            ->addOption('log-file', null, InputOption::VALUE_REQUIRED, 'Write worker logs to this file instead of stderr.')
             ->addOption('flush', null, InputOption::VALUE_NONE, 'Flush the database before starting workers.')
             ->addOption('staleness', null, InputOption::VALUE_NONE, 'Run the shared-cache staleness regression fuzzer.')
             ->addOption('stale-persistent-checks', null, InputOption::VALUE_REQUIRED, 'Consecutive stale rechecks before classifying as persistent.', '3')
@@ -103,7 +105,10 @@ final class WorkCommand extends Command
 
         return $this->application->run(
             $options,
-            new ConsoleLogger($errorOutput),
+            $this->workerLoggerFactory->create(
+                $errorOutput,
+                $this->parseOptionalString($input->getOption('log-file')),
+            ),
         );
     }
 
@@ -141,6 +146,19 @@ final class WorkCommand extends Command
         }
 
         return $this->toFloat($value, $optionName);
+    }
+
+    private function parseOptionalString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_scalar($value)) {
+            throw new InvalidArgumentException('Invalid string option value.');
+        }
+
+        return (string) $value;
     }
 
     /**
