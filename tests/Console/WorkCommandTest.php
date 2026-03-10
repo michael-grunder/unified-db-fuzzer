@@ -6,6 +6,7 @@ namespace Mgrunder\Fuzz\Tests\Console;
 
 use Mgrunder\Fuzz\Console\Command\WorkCommand;
 use Mgrunder\Fuzz\Fuzz\AgeUnit;
+use Mgrunder\Fuzz\Runtime\StatusPageWorkerLogger;
 use Mgrunder\Fuzz\Runtime\WorkApplication;
 use Mgrunder\Fuzz\Runtime\WorkOptions;
 use Mgrunder\Fuzz\Runtime\WorkerLogger;
@@ -43,6 +44,7 @@ final class WorkCommandTest extends TestCase
             '--age-unit' => 'ms',
             '--cmd-types' => ['hash,string'],
             '--seed' => '99',
+            '--afl' => true,
             '--flush' => true,
             '--staleness' => true,
             '--stale-persistent-checks' => '4',
@@ -67,6 +69,7 @@ final class WorkCommandTest extends TestCase
         self::assertSame(AgeUnit::Milliseconds, $application->options->ageUnit);
         self::assertTrue($application->options->flush);
         self::assertSame(99, $application->options->seed);
+        self::assertTrue($application->options->afl);
         self::assertTrue($application->options->staleness);
         self::assertSame(4, $application->options->stalenessThresholds->persistentChecks);
         self::assertSame(5, $application->options->stalenessThresholds->severeSteps);
@@ -129,5 +132,39 @@ final class WorkCommandTest extends TestCase
                 unlink($logFile);
             }
         }
+    }
+
+    #[Test]
+    public function it_uses_the_status_page_logger_when_afl_mode_is_enabled(): void
+    {
+        $capturedLogger = null;
+
+        $tester = new CommandTester(new WorkCommand(
+            new class(static function (WorkerLogger $logger) use (&$capturedLogger): void {
+                $capturedLogger = $logger;
+            }) implements WorkApplication {
+                /**
+                 * @param \Closure(WorkerLogger): void $capture
+                 */
+                public function __construct(
+                    private readonly \Closure $capture,
+                ) {
+                }
+
+                public function run(WorkOptions $options, WorkerLogger $logger): int
+                {
+                    ($this->capture)($logger);
+
+                    return 0;
+                }
+            },
+        ));
+
+        $exitCode = $tester->execute([
+            '--afl' => true,
+        ]);
+
+        self::assertSame(0, $exitCode);
+        self::assertInstanceOf(StatusPageWorkerLogger::class, $capturedLogger);
     }
 }

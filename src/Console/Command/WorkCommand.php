@@ -56,6 +56,7 @@ final class WorkCommand extends Command
                 'Comma-separated Redis data type filters.',
             )
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'Base RNG seed. Defaults to a random seed.')
+            ->addOption('afl', null, InputOption::VALUE_NONE, 'Show an AFL-like full-screen status page instead of dense logs.')
             ->addOption('log-file', null, InputOption::VALUE_REQUIRED, 'Write worker logs to this file instead of stderr.')
             ->addOption('flush', null, InputOption::VALUE_NONE, 'Flush the database before starting workers.')
             ->addOption('staleness', null, InputOption::VALUE_NONE, 'Run the shared-cache staleness regression fuzzer.')
@@ -84,6 +85,7 @@ final class WorkCommand extends Command
                 commandTypes: $this->parseCommandTypes($input->getOption('cmd-types')),
                 flush: (bool) $input->getOption('flush'),
                 seed: $this->parseSeed($input->getOption('seed')),
+                afl: (bool) $input->getOption('afl'),
                 staleness: (bool) $input->getOption('staleness'),
                 stalenessThresholds: new StalenessThresholds(
                     persistentChecks: $this->toInt($input->getOption('stale-persistent-checks'), '--stale-persistent-checks'),
@@ -105,10 +107,12 @@ final class WorkCommand extends Command
 
         return $this->application->run(
             $options,
-            $this->workerLoggerFactory->create(
-                $errorOutput,
-                $this->parseOptionalString($input->getOption('log-file')),
-            ),
+            $options->afl
+                ? $this->workerLoggerFactory->createStatusPage($errorOutput)
+                : $this->workerLoggerFactory->create(
+                    $errorOutput,
+                    $this->parseOptionalString($input->getOption('log-file')),
+                ),
         );
     }
 

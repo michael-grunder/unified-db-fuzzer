@@ -17,4 +17,8 @@ final class MonologWorkerLogger implements WorkerLogger
     {
         $this->logger->info($message);
     }
+
+    public function updateWorkerStatus(WorkerStatusSnapshot $snapshot): void
+    {
+    }
 }

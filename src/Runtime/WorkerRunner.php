@@ -66,6 +66,7 @@ final class WorkerRunner
                 $this->statsSummary(),
             ),
         );
+        $logger->updateWorkerStatus($statistics->snapshot($workerIndex, $options, 'running', $this->statsSummary()));
 
         $terminatedEarly = false;
 
@@ -116,10 +117,12 @@ final class WorkerRunner
             }
 
             $logger->log($statistics->formatProgress($options, $this->statsSummary()));
+            $logger->updateWorkerStatus($statistics->snapshot($workerIndex, $options, 'running', $this->statsSummary()));
             $lastReport = $now;
         }
 
         $logger->log($statistics->formatFinished($options, $terminatedEarly, $this->statsSummary()));
+        $logger->updateWorkerStatus($statistics->snapshot($workerIndex, $options, 'finished', $this->statsSummary()));
 
         return new RunSummary($terminatedEarly, $statistics);
     }

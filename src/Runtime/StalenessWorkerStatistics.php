@@ -162,4 +162,43 @@ final class StalenessWorkerStatistics
 
         return ($right->ageNs ?? -1) <=> ($left->ageNs ?? -1);
     }
+
+    public function snapshot(int $workerIndex, WorkOptions $options, string $state): WorkerStatusSnapshot
+    {
+        $elapsed = microtime(true) - $this->startedAt;
+        $rate = $elapsed > 0 ? ($this->done / $elapsed) : 0.0;
+
+        return new WorkerStatusSnapshot(
+            workerIndex: $workerIndex,
+            pid: getmypid() ?: 0,
+            mode: 'staleness',
+            state: $state,
+            done: $this->done,
+            targetOps: $options->ops > 0 ? $options->ops : null,
+            startedAt: $this->startedAt,
+            updatedAt: microtime(true),
+            opsPerSecond: $rate,
+            metrics: [
+                'reads' => $this->reads,
+                'writes' => $this->writes,
+                'deletes' => $this->deletes,
+                'stale_reads' => $this->staleReads,
+                'regressions' => $this->regressions,
+                'delete_mismatches' => $this->deleteMismatches,
+                'missing_after_create' => $this->missingAfterCreate,
+                'persistent_stale' => $this->persistentStale,
+                'hard_failures' => $this->hardFailures,
+            ],
+            topKeys: array_map(
+                fn (ObservedStaleness $observation): array => [
+                    'key' => $observation->key,
+                    'classification' => $observation->classification,
+                    'steps_behind' => $observation->stepsBehind,
+                    'age' => StatusFormatter::formatAgeValue($observation->ageNs, $options->ageUnit),
+                    'regression' => $observation->regression,
+                ],
+                $this->topObservations,
+            ),
+        );
+    }
 }

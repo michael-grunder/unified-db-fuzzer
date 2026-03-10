@@ -56,6 +56,7 @@ final class StalenessWorkerRunner
                 $options->stalenessThresholds->hardFailureSteps,
             ),
         );
+        $logger->updateWorkerStatus($statistics->snapshot($workerIndex, $options, 'running'));
 
         $terminatedEarly = false;
 
@@ -71,6 +72,7 @@ final class StalenessWorkerRunner
             $now = microtime(true);
             if (($now - $lastReport) >= $options->reportInterval) {
                 $logger->log($statistics->formatProgress($options));
+                $logger->updateWorkerStatus($statistics->snapshot($workerIndex, $options, 'running'));
                 $lastReport = $now;
             }
 
@@ -81,6 +83,7 @@ final class StalenessWorkerRunner
         }
 
         $logger->log($statistics->formatFinished($options, $terminatedEarly));
+        $logger->updateWorkerStatus($statistics->snapshot($workerIndex, $options, 'finished'));
 
         return new StalenessRunSummary($terminatedEarly, $statistics);
     }

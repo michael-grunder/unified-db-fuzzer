@@ -100,6 +100,10 @@ final class WorkerRunnerTest extends TestCase
                 public function log(string $message): void
                 {
                 }
+
+                public function updateWorkerStatus(\Mgrunder\Fuzz\Runtime\WorkerStatusSnapshot $snapshot): void
+                {
+                }
             },
         );
 

@@ -24,29 +24,34 @@ final class WorkerOrchestrator implements WorkApplication
 
     public function run(WorkOptions $options, WorkerLogger $logger): int
     {
+        $startedAt = microtime(true);
+
         if ($options->flush) {
             $client = $this->workerRunner->connect($options);
             $client->flushDatabase();
         }
 
         if ($options->staleness) {
-            return $this->runStalenessMode($options, $logger);
+            return $this->runStalenessMode($options, $logger, $startedAt);
         }
 
         if ($options->workers === 0) {
-            $logger->log(
-                sprintf(
-                    'running in non-forking mode: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
-                    StatusFormatter::formatOps($options->ops),
-                    $options->keys,
-                    $options->members,
-                    $options->reportInterval,
-                    $options->ageUnit->value,
-                    $this->formatCommandTypes($options),
-                ),
-            );
+            if (!$options->afl) {
+                $logger->log(
+                    sprintf(
+                        'running in non-forking mode: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
+                        StatusFormatter::formatOps($options->ops),
+                        $options->keys,
+                        $options->members,
+                        $options->reportInterval,
+                        $options->ageUnit->value,
+                        $this->formatCommandTypes($options),
+                    ),
+                );
+            }
 
             $summary = $this->workerRunner->run($options, 0, $logger);
+            $this->renderStatusPage($logger, $options, 1, $startedAt, true);
 
             return $summary->terminatedEarly ? 1 : 0;
         }
@@ -55,18 +60,20 @@ final class WorkerOrchestrator implements WorkApplication
             throw new RuntimeException('pcntl is required when --workers is greater than zero.');
         }
 
-        $logger->log(
-            sprintf(
-                'spawning %d workers: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
-                $options->workers,
-                StatusFormatter::formatOps($options->ops),
-                $options->keys,
-                $options->members,
-                $options->reportInterval,
-                $options->ageUnit->value,
-                $this->formatCommandTypes($options),
-            ),
-        );
+        if (!$options->afl) {
+            $logger->log(
+                sprintf(
+                    'spawning %d workers: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
+                    $options->workers,
+                    StatusFormatter::formatOps($options->ops),
+                    $options->keys,
+                    $options->members,
+                    $options->reportInterval,
+                    $options->ageUnit->value,
+                    $this->formatCommandTypes($options),
+                ),
+            );
+        }
 
         $pids = [];
         $start = microtime(true);
@@ -86,15 +93,24 @@ final class WorkerOrchestrator implements WorkApplication
             }
 
             $pids[] = $pid;
-            $logger->log(sprintf('spawned worker pid=%d', $pid));
+            if (!$options->afl) {
+                $logger->log(sprintf('spawned worker pid=%d', $pid));
+            }
         }
 
         $remaining = array_fill_keys($pids, true);
         $exitCode = 0;
 
         while ($remaining !== []) {
-            $pid = pcntl_wait($status);
-            if ($pid <= 0) {
+            $pid = pcntl_waitpid(-1, $status, WNOHANG);
+            if ($pid === 0) {
+                $this->renderStatusPage($logger, $options, $options->workers, $startedAt);
+                usleep(100_000);
+
+                continue;
+            }
+
+            if ($pid < 0) {
                 continue;
             }
 
@@ -108,19 +124,26 @@ final class WorkerOrchestrator implements WorkApplication
                 $exitCode = 1;
             }
 
-            $logger->log(
-                sprintf(
-                    'worker pid=%d exited status=%d (%d/%d complete)',
-                    $pid,
-                    $workerExitCode,
-                    $options->workers - count($remaining),
-                    $options->workers,
-                ),
-            );
+            if (!$options->afl) {
+                $logger->log(
+                    sprintf(
+                        'worker pid=%d exited status=%d (%d/%d complete)',
+                        $pid,
+                        $workerExitCode,
+                        $options->workers - count($remaining),
+                        $options->workers,
+                    ),
+                );
+            }
+
+            $this->renderStatusPage($logger, $options, $options->workers, $startedAt);
         }
 
-        $logger->log(sprintf('all workers completed in %.3fs', microtime(true) - $start));
-        $logger->log('final ' . $this->workerRunner->statsSummary());
+        if (!$options->afl) {
+            $logger->log(sprintf('all workers completed in %.3fs', microtime(true) - $start));
+            $logger->log('final ' . $this->workerRunner->statsSummary());
+        }
+        $this->renderStatusPage($logger, $options, $options->workers, $startedAt, true);
 
         return $exitCode;
     }
@@ -137,10 +160,11 @@ final class WorkerOrchestrator implements WorkApplication
         ));
     }
 
-    private function runStalenessMode(WorkOptions $options, WorkerLogger $logger): int
+    private function runStalenessMode(WorkOptions $options, WorkerLogger $logger, float $startedAt): int
     {
         if ($options->workers === 0) {
             $summary = $this->stalenessWorkerRunner->run($options, 0, $logger);
+            $this->renderStatusPage($logger, $options, 1, $startedAt, true);
 
             return $summary->terminatedEarly ? 1 : 0;
         }
@@ -149,15 +173,17 @@ final class WorkerOrchestrator implements WorkApplication
             throw new RuntimeException('pcntl is required when --workers is greater than zero.');
         }
 
-        $logger->log(
-            sprintf(
-                'spawning %d staleness workers: ops=%s keys=%d delays=%s',
-                $options->workers,
-                StatusFormatter::formatOps($options->ops),
-                $options->keys,
-                implode(',', $options->stalenessThresholds->delayBucketsUs),
-            ),
-        );
+        if (!$options->afl) {
+            $logger->log(
+                sprintf(
+                    'spawning %d staleness workers: ops=%s keys=%d delays=%s',
+                    $options->workers,
+                    StatusFormatter::formatOps($options->ops),
+                    $options->keys,
+                    implode(',', $options->stalenessThresholds->delayBucketsUs),
+                ),
+            );
+        }
 
         $pids = [];
 
@@ -176,15 +202,24 @@ final class WorkerOrchestrator implements WorkApplication
             }
 
             $pids[] = $pid;
-            $logger->log(sprintf('spawned staleness worker pid=%d', $pid));
+            if (!$options->afl) {
+                $logger->log(sprintf('spawned staleness worker pid=%d', $pid));
+            }
         }
 
         $remaining = array_fill_keys($pids, true);
         $exitCode = 0;
 
         while ($remaining !== []) {
-            $pid = pcntl_wait($status);
-            if ($pid <= 0) {
+            $pid = pcntl_waitpid(-1, $status, WNOHANG);
+            if ($pid === 0) {
+                $this->renderStatusPage($logger, $options, $options->workers, $startedAt);
+                usleep(100_000);
+
+                continue;
+            }
+
+            if ($pid < 0) {
                 continue;
             }
 
@@ -197,17 +232,43 @@ final class WorkerOrchestrator implements WorkApplication
                 $exitCode = 1;
             }
 
-            $logger->log(
-                sprintf(
-                    'staleness worker pid=%d exited status=%d (%d/%d complete)',
-                    $pid,
-                    $workerExitCode,
-                    $options->workers - count($remaining),
-                    $options->workers,
-                ),
-            );
+            if (!$options->afl) {
+                $logger->log(
+                    sprintf(
+                        'staleness worker pid=%d exited status=%d (%d/%d complete)',
+                        $pid,
+                        $workerExitCode,
+                        $options->workers - count($remaining),
+                        $options->workers,
+                    ),
+                );
+            }
+
+            $this->renderStatusPage($logger, $options, $options->workers, $startedAt);
         }
 
+        $this->renderStatusPage($logger, $options, $options->workers, $startedAt, true);
+
         return $exitCode;
+    }
+
+    private function renderStatusPage(
+        WorkerLogger $logger,
+        WorkOptions $options,
+        int $expectedWorkers,
+        float $startedAt,
+        bool $final = false,
+    ): void {
+        if (!$logger instanceof StatusPageWorkerLogger) {
+            return;
+        }
+
+        if ($final) {
+            $logger->finish($options, $expectedWorkers, $startedAt);
+
+            return;
+        }
+
+        $logger->render($options, $expectedWorkers, $startedAt);
     }
 }

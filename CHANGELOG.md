@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `work` command timeout flags for configuring Relay connection and read timeouts.
 - `bin/kill-clients` and a `kill-clients` console command for continuously killing one or more Redis clients with fixed or ranged sleep intervals.
 - A dedicated `--staleness` fuzzing mode that compares Relay-cached `GET` results against authoritative PhpRedis reads using monotonic freshness envelopes, delayed rechecks, and regression detection.
+- An AFL-style `--afl` status page for `bin/fuzz` that redraws a full-screen worker dashboard and, in staleness mode, highlights the worst stale keys seen so far.
 ### Changed
 - Replaced the hand-rolled `work.php` implementation with a structured `src/` application using Composer autoloading.
 - `bin/kill-clients` now defaults to killing only Relay connections detected from `CLIENT LIST`, with `--all-clients` available to target other client libraries too.

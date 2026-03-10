@@ -33,6 +33,11 @@ final class WorkerLoggerFactory
         return new MonologWorkerLogger($logger);
     }
 
+    public function createStatusPage(OutputInterface $output): StatusPageWorkerLogger
+    {
+        return new StatusPageWorkerLogger($output);
+    }
+
     private function validateLogFile(string $logFile): string
     {
         $logFile = trim($logFile);

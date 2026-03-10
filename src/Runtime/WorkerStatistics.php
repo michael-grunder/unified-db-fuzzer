@@ -94,4 +94,31 @@ final class WorkerStatistics
     {
         return sprintf('%s: %s', $throwable::class, $throwable->getMessage());
     }
+
+    public function snapshot(int $workerIndex, WorkOptions $options, string $state, string $statsSummary): WorkerStatusSnapshot
+    {
+        $elapsed = microtime(true) - $this->startedAt;
+        $rate = $elapsed > 0 ? ($this->done / $elapsed) : 0.0;
+
+        return new WorkerStatusSnapshot(
+            workerIndex: $workerIndex,
+            pid: getmypid() ?: 0,
+            mode: 'standard',
+            state: $state,
+            done: $this->done,
+            targetOps: $options->ops > 0 ? $options->ops : null,
+            startedAt: $this->startedAt,
+            updatedAt: microtime(true),
+            opsPerSecond: $rate,
+            lastException: $this->lastException,
+            metrics: [
+                'exceptions' => $this->exceptions,
+                'reconnect_failures' => $this->reconnectFailures,
+                'oldest' => $this->oldestKey === null || $this->oldestAgeNs === null
+                    ? 'none'
+                    : $options->ageUnit->format($this->oldestKey, $this->oldestAgeNs),
+                'stats_summary' => $statsSummary,
+            ],
+        );
+    }
 }

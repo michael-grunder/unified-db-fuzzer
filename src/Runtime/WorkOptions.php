@@ -27,6 +27,7 @@ final readonly class WorkOptions
         public array $commandTypes = [],
         public bool $flush = false,
         public ?int $seed = null,
+        public bool $afl = false,
         public bool $staleness = false,
         public StalenessThresholds $stalenessThresholds = new StalenessThresholds(),
     ) {
