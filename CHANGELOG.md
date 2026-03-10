@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modular fuzzing domain model with reusable Redis command classes, worker orchestration, and PHPUnit coverage.
 - Seeded fuzz context support for reproducible command and argument selection.
 - Optional `work` command timeout flags for configuring Relay connection and read timeouts.
+- `bin/kill-clients` and a `kill-clients` console command for continuously killing one or more Redis clients with fixed or ranged sleep intervals.
 ### Changed
 - Replaced the hand-rolled `work.php` implementation with a structured `src/` application using Composer autoloading.
 ### Fixed

@@ -1,0 +1,19 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Mgrunder\Fuzz\Console\ApplicationFactory;
+use Mgrunder\Fuzz\Console\Command\KillClientsCommand;
+use Mgrunder\Fuzz\Console\Input\NegativeNumberOptionNormalizer;
+use Symfony\Component\Console\Input\ArgvInput;
+
+require __DIR__ . '/../vendor/autoload.php';
+
+$application = (new ApplicationFactory())->create(KillClientsCommand::NAME);
+$commandDefinition = $application->get(KillClientsCommand::NAME)->getDefinition();
+$input = new ArgvInput(
+    (new NegativeNumberOptionNormalizer())->normalize($_SERVER['argv'] ?? [], $commandDefinition),
+);
+
+exit($application->run($input));

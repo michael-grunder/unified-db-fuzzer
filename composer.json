@@ -1,7 +1,8 @@
 {
     "name": "mgrunder/fuzz",
     "bin": [
-        "bin/fuzz"
+        "bin/fuzz",
+        "bin/kill-clients"
     ],
     "autoload": {
         "psr-4": {
