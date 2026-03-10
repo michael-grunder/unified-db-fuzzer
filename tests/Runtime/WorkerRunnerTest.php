@@ -18,6 +18,7 @@ use Mgrunder\Fuzz\Runtime\StatsProvider;
 use Mgrunder\Fuzz\Runtime\WorkOptions;
 use Mgrunder\Fuzz\Runtime\WorkerLogger;
 use Mgrunder\Fuzz\Runtime\WorkerRunner;
+use Closure;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -57,7 +58,7 @@ final class WorkerRunnerTest extends TestCase
                     return 'get';
                 }
 
-                public function type(): ?RedisDataType
+                public function type(): RedisDataType
                 {
                     return RedisDataType::String;
                 }
@@ -113,25 +114,28 @@ final class WorkerRunnerTest extends TestCase
     public function it_passes_timeout_settings_to_the_client_factory(): void
     {
         $captured = [];
+        $capture = static function (array $connection) use (&$captured): void {
+            $captured = $connection;
+        };
 
         $runner = new WorkerRunner(
-            new class($captured) implements ClientFactory {
+            new class($capture) implements ClientFactory {
                 /**
-                 * @param array<string, mixed> $captured
+                 * @param Closure(array<string, mixed>): void $capture
                  */
                 public function __construct(
-                    private array &$captured,
+                    private Closure $capture,
                 ) {
                 }
 
                 public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
                 {
-                    $this->captured = [
+                    ($this->capture)([
                         'host' => $host,
                         'port' => $port,
                         'timeout' => $timeout,
                         'readTimeout' => $readTimeout,
-                    ];
+                    ]);
 
                     return new class() implements RedisClient {
                         public function execute(RedisOperation $operation): mixed
