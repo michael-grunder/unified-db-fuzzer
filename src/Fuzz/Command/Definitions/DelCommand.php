@@ -10,6 +10,11 @@ use Mgrunder\Fuzz\Fuzz\RedisDataType;
 
 final class DelCommand extends AbstractSingleKeyCommand
 {
+    public function supportsStalenessWrite(): bool
+    {
+        return true;
+    }
+
     public function name(): string
     {
         return 'del';

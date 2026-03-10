@@ -27,6 +27,8 @@ final readonly class WorkOptions
         public array $commandTypes = [],
         public bool $flush = false,
         public ?int $seed = null,
+        public bool $staleness = false,
+        public StalenessThresholds $stalenessThresholds = new StalenessThresholds(),
     ) {
         if ($this->keys <= 0) {
             throw new InvalidArgumentException('--keys must be > 0.');

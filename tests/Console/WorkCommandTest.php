@@ -44,6 +44,13 @@ final class WorkCommandTest extends TestCase
             '--cmd-types' => ['hash,string'],
             '--seed' => '99',
             '--flush' => true,
+            '--staleness' => true,
+            '--stale-persistent-checks' => '4',
+            '--stale-severe-steps' => '5',
+            '--stale-hard-steps' => '9',
+            '--stale-stuck-repeats' => '6',
+            '--stale-top' => '7',
+            '--stale-delays' => '0,250,1000',
         ]);
 
         self::assertSame(0, $exitCode);
@@ -60,6 +67,13 @@ final class WorkCommandTest extends TestCase
         self::assertSame(AgeUnit::Milliseconds, $application->options->ageUnit);
         self::assertTrue($application->options->flush);
         self::assertSame(99, $application->options->seed);
+        self::assertTrue($application->options->staleness);
+        self::assertSame(4, $application->options->stalenessThresholds->persistentChecks);
+        self::assertSame(5, $application->options->stalenessThresholds->severeSteps);
+        self::assertSame(9, $application->options->stalenessThresholds->hardFailureSteps);
+        self::assertSame(6, $application->options->stalenessThresholds->stuckRepeats);
+        self::assertSame(7, $application->options->stalenessThresholds->topN);
+        self::assertSame([0, 250, 1000], $application->options->stalenessThresholds->delayBucketsUs);
         self::assertSame(['hash', 'string'], array_map(
             static fn ($type): string => $type->value,
             $application->options->commandTypes,

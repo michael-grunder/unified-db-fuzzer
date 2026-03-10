@@ -9,6 +9,11 @@ use Mgrunder\Fuzz\Fuzz\RedisDataType;
 
 final class SetCommand extends AbstractSingleKeyValueCommand
 {
+    public function supportsStalenessWrite(): bool
+    {
+        return true;
+    }
+
     public function name(): string
     {
         return 'set';

@@ -29,5 +29,21 @@ Useful options:
 - `--timeout=1.5` sets the Relay connection timeout in seconds.
 - `--read-timeout=5.0` sets the Relay read timeout in seconds.
 - `--flush` clears the current database before workers start.
+- `--staleness` switches to the shared-cache staleness/regression fuzzer. This mode uses Relay for cached reads and a direct PhpRedis connection as authoritative truth.
+- `--stale-delays=0,100,500,1000,5000,20000` controls delayed recheck buckets in microseconds.
+- `--stale-persistent-checks=3`, `--stale-hard-steps=8`, and `--stale-stuck-repeats=5` tune when stale observations become hard failures.
 - `bin/kill-clients` continuously selects one or more client ids from `CLIENT LIST`, excludes its own control connection, and kills them.
 - `bin/kill-clients --sleep=0.05-0.25 --kills=2-5 --seed=1234` makes sleep timing and client selection reproducible.
+
+Minimal staleness run:
+
+```bash
+php bin/fuzz work --staleness --workers=4 --ops=5000 --keys=16 --seed=1234 --flush
+```
+
+The staleness fuzzer currently targets string `SET`/`GET` plus `DEL`/recreate churn. Values are written as deterministic JSON envelopes with monotonic Redis versions so each worker can detect:
+
+- cached reads that stay behind authoritative truth
+- regressions to an older cached version
+- stale values that survive deletes
+- stale misses after recreate

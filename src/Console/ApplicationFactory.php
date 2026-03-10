@@ -8,6 +8,7 @@ use Mgrunder\Fuzz\Console\Command\KillClientsCommand;
 use Mgrunder\Fuzz\Console\Command\WorkCommand;
 use Mgrunder\Fuzz\Fuzz\Command\CommandRegistry;
 use Mgrunder\Fuzz\Runtime\ClientKiller;
+use Mgrunder\Fuzz\Runtime\PhpRedisClientFactory;
 use Mgrunder\Fuzz\Runtime\RelayClientFactory;
 use Mgrunder\Fuzz\Runtime\RelayAdminClientFactory;
 use Mgrunder\Fuzz\Runtime\RelayStatsProvider;
@@ -28,6 +29,7 @@ final class ApplicationFactory
             new WorkCommand(
                 new WorkerOrchestrator(
                     new RelayClientFactory(),
+                    new PhpRedisClientFactory(),
                     CommandRegistry::default(),
                     new RelayStatsProvider(),
                 ),

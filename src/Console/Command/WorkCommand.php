@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Mgrunder\Fuzz\Fuzz\AgeUnit;
 use Mgrunder\Fuzz\Fuzz\RedisDataType;
 use Mgrunder\Fuzz\Runtime\ConsoleLogger;
+use Mgrunder\Fuzz\Runtime\StalenessThresholds;
 use Mgrunder\Fuzz\Runtime\WorkApplication;
 use Mgrunder\Fuzz\Runtime\WorkOptions;
 use Symfony\Component\Console\Command\Command;
@@ -54,7 +55,14 @@ final class WorkCommand extends Command
                 'Comma-separated Redis data type filters.',
             )
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'Base RNG seed. Defaults to a random seed.')
-            ->addOption('flush', null, InputOption::VALUE_NONE, 'Flush the database before starting workers.');
+            ->addOption('flush', null, InputOption::VALUE_NONE, 'Flush the database before starting workers.')
+            ->addOption('staleness', null, InputOption::VALUE_NONE, 'Run the shared-cache staleness regression fuzzer.')
+            ->addOption('stale-persistent-checks', null, InputOption::VALUE_REQUIRED, 'Consecutive stale rechecks before classifying as persistent.', '3')
+            ->addOption('stale-severe-steps', null, InputOption::VALUE_REQUIRED, 'Steps-behind threshold for suspicious stale observations.', '3')
+            ->addOption('stale-hard-steps', null, InputOption::VALUE_REQUIRED, 'Steps-behind threshold for hard failure.', '8')
+            ->addOption('stale-stuck-repeats', null, InputOption::VALUE_REQUIRED, 'Same stale version repeat threshold for hard failure.', '5')
+            ->addOption('stale-top', null, InputOption::VALUE_REQUIRED, 'Top-N suspicious stale events to retain per worker.', '10')
+            ->addOption('stale-delays', null, InputOption::VALUE_REQUIRED, 'Comma-separated recheck delay buckets in microseconds.', '0,100,500,1000,5000,20000');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -74,6 +82,15 @@ final class WorkCommand extends Command
                 commandTypes: $this->parseCommandTypes($input->getOption('cmd-types')),
                 flush: (bool) $input->getOption('flush'),
                 seed: $this->parseSeed($input->getOption('seed')),
+                staleness: (bool) $input->getOption('staleness'),
+                stalenessThresholds: new StalenessThresholds(
+                    persistentChecks: $this->toInt($input->getOption('stale-persistent-checks'), '--stale-persistent-checks'),
+                    severeSteps: $this->toInt($input->getOption('stale-severe-steps'), '--stale-severe-steps'),
+                    hardFailureSteps: $this->toInt($input->getOption('stale-hard-steps'), '--stale-hard-steps'),
+                    stuckRepeats: $this->toInt($input->getOption('stale-stuck-repeats'), '--stale-stuck-repeats'),
+                    topN: $this->toInt($input->getOption('stale-top'), '--stale-top'),
+                    delayBucketsUs: $this->parseDelayBuckets($input->getOption('stale-delays')),
+                ),
             );
         } catch (InvalidArgumentException|ValueError $exception) {
             $errorOutput = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
@@ -124,6 +141,28 @@ final class WorkCommand extends Command
         }
 
         return $this->toFloat($value, $optionName);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function parseDelayBuckets(mixed $value): array
+    {
+        if (!is_scalar($value)) {
+            throw new InvalidArgumentException('Invalid --stale-delays value.');
+        }
+
+        $delays = [];
+        foreach (explode(',', (string) $value) as $candidate) {
+            $candidate = trim($candidate);
+            if ($candidate === '') {
+                continue;
+            }
+
+            $delays[] = $this->toInt($candidate, '--stale-delays');
+        }
+
+        return $delays;
     }
 
     /**

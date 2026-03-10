@@ -6,6 +6,7 @@ namespace Mgrunder\Fuzz\Fuzz\Command;
 
 use Mgrunder\Fuzz\Fuzz\FuzzContext;
 use Mgrunder\Fuzz\Fuzz\ObservedAge;
+use Mgrunder\Fuzz\Fuzz\ObservedStaleness;
 use Mgrunder\Fuzz\Fuzz\RedisDataType;
 use Mgrunder\Fuzz\Fuzz\RedisOperation;
 
@@ -21,6 +22,30 @@ abstract class RedisCommand
 
     public function observeAge(RedisOperation $operation, mixed $result): ?ObservedAge
     {
+        return null;
+    }
+
+    public function supportsStalenessRead(): bool
+    {
+        return false;
+    }
+
+    public function supportsStalenessWrite(): bool
+    {
+        return false;
+    }
+
+    public function supportsAuthoritativeCompare(): bool
+    {
+        return $this->supportsStalenessRead();
+    }
+
+    public function observeStaleness(
+        RedisOperation $operation,
+        mixed $cachedResult,
+        mixed $truthResult,
+        int $nowNs,
+    ): ?ObservedStaleness {
         return null;
     }
 
