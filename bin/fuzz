@@ -4,7 +4,16 @@
 declare(strict_types=1);
 
 use Mgrunder\Fuzz\Console\ApplicationFactory;
+use Mgrunder\Fuzz\Console\Command\WorkCommand;
+use Mgrunder\Fuzz\Console\Input\NegativeNumberOptionNormalizer;
+use Symfony\Component\Console\Input\ArgvInput;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-exit((new ApplicationFactory())->create()->run());
+$application = (new ApplicationFactory())->create();
+$commandDefinition = $application->get(WorkCommand::NAME)->getDefinition();
+$input = new ArgvInput(
+    (new NegativeNumberOptionNormalizer())->normalize($_SERVER['argv'] ?? [], $commandDefinition),
+);
+
+exit($application->run($input));
