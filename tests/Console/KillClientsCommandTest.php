@@ -49,7 +49,32 @@ final class KillClientsCommandTest extends TestCase
         self::assertSame(900_000, $application->options->maxSleepMicros);
         self::assertSame(2, $application->options->minKillsPerIteration);
         self::assertSame(5, $application->options->maxKillsPerIteration);
+        self::assertTrue($application->options->relayOnly);
         self::assertSame(99, $application->options->seed);
+    }
+
+    #[Test]
+    public function it_can_disable_the_default_relay_only_filter(): void
+    {
+        $application = new class() implements ClientKillApplication {
+            public ?ClientKillOptions $options = null;
+
+            public function run(ClientKillOptions $options, ClientKillLogger $logger): int
+            {
+                $this->options = $options;
+
+                return 0;
+            }
+        };
+
+        $tester = new CommandTester(new KillClientsCommand($application));
+        $exitCode = $tester->execute([
+            '--all-clients' => true,
+        ]);
+
+        self::assertSame(0, $exitCode);
+        self::assertNotNull($application->options);
+        self::assertFalse($application->options->relayOnly);
     }
 
     #[Test]

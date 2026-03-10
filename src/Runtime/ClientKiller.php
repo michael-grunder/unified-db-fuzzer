@@ -8,7 +8,6 @@ use Random\Engine\Mt19937;
 use Random\Randomizer;
 
 use function array_splice;
-use function array_values;
 use function count;
 use function microtime;
 use function random_int;
@@ -58,7 +57,7 @@ final class ClientKiller implements ClientKillApplication
         for (;;) {
             $iteration++;
             $killedThisIteration = 0;
-            $clientIds = $this->withoutSelf($client->listClientIds(), $selfClientId);
+            $clientIds = $this->targetClientIds($client->listClients(), $selfClientId, $options->relayOnly);
             $targetCount = $this->randomInRange(
                 $randomizer,
                 $options->minKillsPerIteration,
@@ -96,17 +95,23 @@ final class ClientKiller implements ClientKillApplication
     }
 
     /**
-     * @param list<int> $clientIds
+     * @param list<RedisClientConnection> $clients
      * @return list<int>
      */
-    private function withoutSelf(array $clientIds, int $selfClientId): array
+    private function targetClientIds(array $clients, int $selfClientId, bool $relayOnly): array
     {
         $filtered = [];
 
-        foreach ($clientIds as $clientId) {
-            if ($clientId !== $selfClientId) {
-                $filtered[] = $clientId;
+        foreach ($clients as $client) {
+            if ($client->id === $selfClientId) {
+                continue;
             }
+
+            if ($relayOnly && !$client->isRelayConnection()) {
+                continue;
+            }
+
+            $filtered[] = $client->id;
         }
 
         return $filtered;

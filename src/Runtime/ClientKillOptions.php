@@ -17,6 +17,7 @@ final readonly class ClientKillOptions
         public int $maxSleepMicros,
         public int $minKillsPerIteration,
         public int $maxKillsPerIteration,
+        public bool $relayOnly,
         public ?int $seed,
     ) {
         if ($this->minSleepMicros < 0) {

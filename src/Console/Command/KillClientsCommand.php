@@ -53,6 +53,12 @@ final class KillClientsCommand extends Command
                 'How many client ids to kill per iteration. Accepts a fixed count or min-max range.',
                 '1',
             )
+            ->addOption(
+                'all-clients',
+                null,
+                InputOption::VALUE_NONE,
+                'Kill any client type instead of only Relay connections.',
+            )
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'Base RNG seed for reproducible sleep and kill selection.');
     }
 
@@ -71,6 +77,7 @@ final class KillClientsCommand extends Command
                 maxSleepMicros: $maxSleepMicros,
                 minKillsPerIteration: $minKills,
                 maxKillsPerIteration: $maxKills,
+                relayOnly: !$input->getOption('all-clients'),
                 seed: $this->parseSeed($input->getOption('seed')),
             );
         } catch (InvalidArgumentException $exception) {

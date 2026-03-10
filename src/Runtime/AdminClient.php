@@ -9,9 +9,9 @@ interface AdminClient
     public function currentClientId(): int;
 
     /**
-     * @return list<int>
+     * @return list<RedisClientConnection>
      */
-    public function listClientIds(): array;
+    public function listClients(): array;
 
     public function killClientById(int $clientId): bool;
 }

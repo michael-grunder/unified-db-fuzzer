@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A dedicated `--staleness` fuzzing mode that compares Relay-cached `GET` results against authoritative PhpRedis reads using monotonic freshness envelopes, delayed rechecks, and regression detection.
 ### Changed
 - Replaced the hand-rolled `work.php` implementation with a structured `src/` application using Composer autoloading.
+- `bin/kill-clients` now defaults to killing only Relay connections detected from `CLIENT LIST`, with `--all-clients` available to target other client libraries too.
 ### Fixed
 - Normalized negative numeric CLI option values in `bin/fuzz` so `--ops -1` is parsed and validated correctly.
 - Workers now reconnect and retry once after routine Redis connection failures so killed clients do not immediately abort fuzz runs.
