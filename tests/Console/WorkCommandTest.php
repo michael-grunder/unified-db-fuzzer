@@ -33,6 +33,8 @@ final class WorkCommandTest extends TestCase
         $exitCode = $tester->execute([
             '--host' => 'redis.internal',
             '--port' => '6380',
+            '--timeout' => '1.25',
+            '--read-timeout' => '3.5',
             '--keys' => '25',
             '--mems' => '8',
             '--workers' => '0',
@@ -48,6 +50,8 @@ final class WorkCommandTest extends TestCase
         self::assertNotNull($application->options);
         self::assertSame('redis.internal', $application->options->host);
         self::assertSame(6380, $application->options->port);
+        self::assertSame(1.25, $application->options->timeout);
+        self::assertSame(3.5, $application->options->readTimeout);
         self::assertSame(25, $application->options->keys);
         self::assertSame(8, $application->options->members);
         self::assertSame(0, $application->options->workers);

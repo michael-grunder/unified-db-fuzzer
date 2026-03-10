@@ -6,5 +6,5 @@ namespace Mgrunder\Fuzz\Runtime;
 
 interface ClientFactory
 {
-    public function connect(string $host, int $port): RedisClient;
+    public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient;
 }

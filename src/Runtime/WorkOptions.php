@@ -16,6 +16,8 @@ final readonly class WorkOptions
     public function __construct(
         public string $host,
         public int $port,
+        public ?float $timeout,
+        public ?float $readTimeout,
         public int $keys,
         public int $members,
         public int $workers,
@@ -44,6 +46,14 @@ final readonly class WorkOptions
 
         if ($this->port <= 0) {
             throw new InvalidArgumentException('--port must be > 0.');
+        }
+
+        if ($this->timeout !== null && $this->timeout < 0) {
+            throw new InvalidArgumentException('--timeout must be >= 0.');
+        }
+
+        if ($this->readTimeout !== null && $this->readTimeout < 0) {
+            throw new InvalidArgumentException('--read-timeout must be >= 0.');
         }
 
         if ($this->reportInterval <= 0) {

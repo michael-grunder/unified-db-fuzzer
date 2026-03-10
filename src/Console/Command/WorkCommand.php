@@ -33,6 +33,8 @@ final class WorkCommand extends Command
             ->setDescription('Run the Redis Relay fuzz worker harness.')
             ->addOption('host', null, InputOption::VALUE_REQUIRED, 'Redis host.', 'localhost')
             ->addOption('port', null, InputOption::VALUE_REQUIRED, 'Redis port.', '6379')
+            ->addOption('timeout', null, InputOption::VALUE_REQUIRED, 'Redis connection timeout in seconds.')
+            ->addOption('read-timeout', null, InputOption::VALUE_REQUIRED, 'Redis read timeout in seconds.')
             ->addOption('keys', null, InputOption::VALUE_REQUIRED, 'How many distinct keys to target.', '100')
             ->addOption('mems', null, InputOption::VALUE_REQUIRED, 'How many hash fields or zset members to target.', '10')
             ->addOption('workers', null, InputOption::VALUE_REQUIRED, 'Worker count. Use 0 to disable forking.', '4')
@@ -61,6 +63,8 @@ final class WorkCommand extends Command
             $options = new WorkOptions(
                 host: (string) $input->getOption('host'),
                 port: $this->toInt($input->getOption('port'), '--port'),
+                timeout: $this->parseOptionalFloat($input->getOption('timeout'), '--timeout'),
+                readTimeout: $this->parseOptionalFloat($input->getOption('read-timeout'), '--read-timeout'),
                 keys: $this->toInt($input->getOption('keys'), '--keys'),
                 members: $this->toInt($input->getOption('mems'), '--mems'),
                 workers: $this->toInt($input->getOption('workers'), '--workers'),
@@ -111,6 +115,15 @@ final class WorkCommand extends Command
         }
 
         return $this->toInt($rawSeed, '--seed');
+    }
+
+    private function parseOptionalFloat(mixed $value, string $optionName): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return $this->toFloat($value, $optionName);
     }
 
     /**

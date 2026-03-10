@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Symfony Console application bootstrap in `bin/fuzz` with `work.php` kept as a compatibility wrapper.
 - Modular fuzzing domain model with reusable Redis command classes, worker orchestration, and PHPUnit coverage.
 - Seeded fuzz context support for reproducible command and argument selection.
+- Optional `work` command timeout flags for configuring Relay connection and read timeouts.
 ### Changed
 - Replaced the hand-rolled `work.php` implementation with a structured `src/` application using Composer autoloading.
 ### Fixed

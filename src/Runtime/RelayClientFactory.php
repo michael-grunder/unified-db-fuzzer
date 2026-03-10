@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class RelayClientFactory implements ClientFactory
 {
-    public function connect(string $host, int $port): RedisClient
+    public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
     {
         $relayClass = 'Relay\\Relay';
 
@@ -17,8 +17,20 @@ final class RelayClientFactory implements ClientFactory
         }
 
         $relay = new $relayClass();
+        $connectArguments = [
+            'host' => $host,
+            'port' => $port,
+        ];
 
-        $relay->connect($host, $port);
+        if ($timeout !== null) {
+            $connectArguments['timeout'] = $timeout;
+        }
+
+        if ($readTimeout !== null) {
+            $connectArguments['read_timeout'] = $readTimeout;
+        }
+
+        $relay->connect(...$connectArguments);
 
         return new RelayClient($relay);
     }

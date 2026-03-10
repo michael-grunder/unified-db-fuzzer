@@ -31,7 +31,7 @@ final class WorkerRunnerTest extends TestCase
             new class() implements ClientFactory {
                 private int $attempts = 0;
 
-                public function connect(string $host, int $port): RedisClient
+                public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
                 {
                     $this->attempts++;
 
@@ -84,6 +84,8 @@ final class WorkerRunnerTest extends TestCase
             new WorkOptions(
                 host: 'localhost',
                 port: 6379,
+                timeout: null,
+                readTimeout: null,
                 keys: 10,
                 members: 5,
                 workers: 0,
@@ -105,5 +107,72 @@ final class WorkerRunnerTest extends TestCase
         self::assertSame(2, $summary->statistics->exceptions);
         self::assertSame(1, $summary->statistics->reconnectFailures);
         self::assertSame('reconnect failed: RuntimeException: connect failed', $summary->statistics->lastException);
+    }
+
+    #[Test]
+    public function it_passes_timeout_settings_to_the_client_factory(): void
+    {
+        $captured = [];
+
+        $runner = new WorkerRunner(
+            new class($captured) implements ClientFactory {
+                /**
+                 * @param array<string, mixed> $captured
+                 */
+                public function __construct(
+                    private array &$captured,
+                ) {
+                }
+
+                public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
+                {
+                    $this->captured = [
+                        'host' => $host,
+                        'port' => $port,
+                        'timeout' => $timeout,
+                        'readTimeout' => $readTimeout,
+                    ];
+
+                    return new class() implements RedisClient {
+                        public function execute(RedisOperation $operation): mixed
+                        {
+                            return null;
+                        }
+
+                        public function flushDatabase(): void
+                        {
+                        }
+                    };
+                }
+            },
+            new CommandRegistry([]),
+            new class() implements StatsProvider {
+                public function summary(): string
+                {
+                    return 'cache=unknown';
+                }
+            },
+        );
+
+        $runner->connect(new WorkOptions(
+            host: 'redis.internal',
+            port: 6380,
+            timeout: 0.75,
+            readTimeout: 2.5,
+            keys: 10,
+            members: 5,
+            workers: 0,
+            ops: 1,
+            reportInterval: 10.0,
+            ageUnit: AgeUnit::Microseconds,
+            seed: 7,
+        ));
+
+        self::assertSame([
+            'host' => 'redis.internal',
+            'port' => 6380,
+            'timeout' => 0.75,
+            'readTimeout' => 2.5,
+        ], $captured);
     }
 }

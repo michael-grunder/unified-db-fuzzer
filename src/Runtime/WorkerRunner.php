@@ -20,7 +20,12 @@ final class WorkerRunner
 
     public function connect(WorkOptions $options): RedisClient
     {
-        return $this->clientFactory->connect($options->host, $options->port);
+        return $this->clientFactory->connect(
+            $options->host,
+            $options->port,
+            $options->timeout,
+            $options->readTimeout,
+        );
     }
 
     public function statsSummary(): string

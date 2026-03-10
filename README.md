@@ -20,6 +20,8 @@ Useful options:
 
 - `--cmd-types=string,hash,zset` filters the registered fuzz commands by Redis data type.
 - `--seed=1234` makes command selection and argument generation reproducible.
+- `--timeout=1.5` sets the Relay connection timeout in seconds.
+- `--read-timeout=5.0` sets the Relay read timeout in seconds.
 - `--flush` clears the current database before workers start.
 
 `kill.php` is unchanged and remains a separate helper script.
