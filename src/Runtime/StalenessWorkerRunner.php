@@ -40,8 +40,8 @@ final class StalenessWorkerRunner
         $seed = $options->seed ?? random_int(1, PHP_INT_MAX);
         $context = new FuzzContext($options->keys, $options->members, $seed + $workerIndex);
         $statistics = new StalenessWorkerStatistics($options->stalenessThresholds->topN);
-        $cacheClient = $this->cacheClientFactory->connect($options->host, $options->port, $options->timeout, $options->readTimeout);
-        $truthClient = $this->truthClientFactory->connect($options->host, $options->port, $options->timeout, $options->readTimeout);
+        $cacheClient = $this->connect($this->cacheClientFactory, $options);
+        $truthClient = $this->connect($this->truthClientFactory, $options);
         $lastReport = microtime(true);
 
         $logger->log(
@@ -352,5 +352,22 @@ final class StalenessWorkerRunner
     private function hotKeyCount(int $keys): int
     {
         return max(1, min($keys, 8));
+    }
+
+    private function connect(ClientFactory $clientFactory, WorkOptions $options): RedisClient
+    {
+        return new ResilientRedisClient(
+            $clientFactory,
+            $options->host,
+            $options->port,
+            $options->timeout,
+            $options->readTimeout,
+            $clientFactory->connect(
+                $options->host,
+                $options->port,
+                $options->timeout,
+                $options->readTimeout,
+            ),
+        );
     }
 }

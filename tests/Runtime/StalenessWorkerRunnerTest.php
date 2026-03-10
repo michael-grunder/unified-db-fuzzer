@@ -14,6 +14,7 @@ use Mgrunder\Fuzz\Runtime\StalenessWorkerRunner;
 use Mgrunder\Fuzz\Runtime\WorkOptions;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class StalenessWorkerRunnerTest extends TestCase
 {
@@ -211,5 +212,110 @@ final class StalenessWorkerRunnerTest extends TestCase
         self::assertSame(1, $statistics->regressions);
         self::assertGreaterThanOrEqual(1, $statistics->hardFailures);
         self::assertSame('stale_regression', $statistics->worstObservation?->classification);
+    }
+
+    #[Test]
+    public function it_reconnects_after_retryable_connection_errors_without_exiting_early(): void
+    {
+        $connections = 0;
+        $store = [];
+
+        $factory = new class($connections, $store) implements ClientFactory {
+            /**
+             * @param array<string, string> $store
+             */
+            public function __construct(
+                private int &$connections,
+                private array &$store,
+            ) {
+            }
+
+            public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
+            {
+                $this->connections++;
+                $failFirstExecute = $this->connections === 1;
+
+                return new class($this->store, $failFirstExecute) implements RedisClient {
+                    /**
+                     * @param array<string, string> $store
+                     */
+                    public function __construct(
+                        private array &$store,
+                        private bool $failFirstExecute,
+                    ) {
+                    }
+
+                    public function execute(RedisOperation $operation): mixed
+                    {
+                        if ($this->failFirstExecute) {
+                            $this->failFirstExecute = false;
+
+                            throw new RuntimeException('read error on connection to localhost:6379');
+                        }
+
+                        return match ($operation->name) {
+                            'get' => $this->store[$operation->arguments[0]] ?? false,
+                            'set' => $this->store[$operation->arguments[0]] = $operation->arguments[1],
+                            'del' => $this->delete($operation->arguments[0]),
+                            'incr' => $this->increment($operation->arguments[0]),
+                            default => null,
+                        };
+                    }
+
+                    public function flushDatabase(): void
+                    {
+                        $this->store = [];
+                    }
+
+                    private function delete(string $key): int
+                    {
+                        if (!array_key_exists($key, $this->store)) {
+                            return 0;
+                        }
+
+                        unset($this->store[$key]);
+
+                        return 1;
+                    }
+
+                    private function increment(string $key): int
+                    {
+                        $next = ((int) ($this->store[$key] ?? 0)) + 1;
+                        $this->store[$key] = (string) $next;
+
+                        return $next;
+                    }
+                };
+            }
+        };
+
+        $runner = new StalenessWorkerRunner($factory, $factory);
+
+        $summary = $runner->run(
+            new WorkOptions(
+                host: 'localhost',
+                port: 6379,
+                timeout: null,
+                readTimeout: null,
+                keys: 1,
+                members: 1,
+                workers: 0,
+                ops: 1,
+                reportInterval: 10.0,
+                ageUnit: AgeUnit::Microseconds,
+                seed: 2,
+                staleness: true,
+            ),
+            0,
+            new class() implements \Mgrunder\Fuzz\Runtime\WorkerLogger {
+                public function log(string $message): void
+                {
+                }
+            },
+        );
+
+        self::assertFalse($summary->terminatedEarly);
+        self::assertSame(1, $summary->statistics->done);
+        self::assertSame(3, $connections);
     }
 }

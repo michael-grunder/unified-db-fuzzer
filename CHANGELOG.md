@@ -17,4 +17,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced the hand-rolled `work.php` implementation with a structured `src/` application using Composer autoloading.
 ### Fixed
 - Normalized negative numeric CLI option values in `bin/fuzz` so `--ops -1` is parsed and validated correctly.
+- Workers now reconnect and retry once after routine Redis connection failures so killed clients do not immediately abort fuzz runs.
 ### Removed

@@ -32,6 +32,7 @@ Useful options:
 - `--staleness` switches to the shared-cache staleness/regression fuzzer. This mode uses Relay for cached reads and a direct PhpRedis connection as authoritative truth.
 - `--stale-delays=0,100,500,1000,5000,20000` controls delayed recheck buckets in microseconds.
 - `--stale-persistent-checks=3`, `--stale-hard-steps=8`, and `--stale-stuck-repeats=5` tune when stale observations become hard failures.
+- Workers automatically reconnect once and retry the interrupted Redis operation when a normal connection failure closes a client unexpectedly.
 - `bin/kill-clients` continuously selects one or more client ids from `CLIENT LIST`, excludes its own control connection, and kills them.
 - `bin/kill-clients --sleep=0.05-0.25 --kills=2-5 --seed=1234` makes sleep timing and client selection reproducible.
 

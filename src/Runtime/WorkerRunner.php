@@ -20,11 +20,18 @@ final class WorkerRunner
 
     public function connect(WorkOptions $options): RedisClient
     {
-        return $this->clientFactory->connect(
+        return new ResilientRedisClient(
+            $this->clientFactory,
             $options->host,
             $options->port,
             $options->timeout,
             $options->readTimeout,
+            $this->clientFactory->connect(
+                $options->host,
+                $options->port,
+                $options->timeout,
+                $options->readTimeout,
+            ),
         );
     }
 
