@@ -1,8 +1,16 @@
 {
     "name": "mgrunder/fuzz",
+    "bin": [
+        "bin/fuzz"
+    ],
     "autoload": {
         "psr-4": {
             "Mgrunder\\Fuzz\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mgrunder\\Fuzz\\Tests\\": "tests/"
         }
     },
     "authors": [
