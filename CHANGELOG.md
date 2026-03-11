@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 ### Added
+- `--worker-keyspace` for the normal fuzzer so each worker writes only within its own key namespace while reads can probe any worker namespace.
 - Symfony Console application bootstrap in `bin/fuzz` with `work.php` kept as a compatibility wrapper.
 - Modular fuzzing domain model with reusable Redis command classes, worker orchestration, and PHPUnit coverage.
 - Seeded fuzz context support for reproducible command and argument selection.

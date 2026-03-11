@@ -45,6 +45,7 @@ final class WorkCommandTest extends TestCase
             '--cmd-types' => ['hash,string'],
             '--seed' => '99',
             '--afl' => true,
+            '--worker-keyspace' => true,
             '--flush' => true,
             '--staleness' => true,
             '--stale-persistent-checks' => '4',
@@ -70,6 +71,7 @@ final class WorkCommandTest extends TestCase
         self::assertTrue($application->options->flush);
         self::assertSame(99, $application->options->seed);
         self::assertTrue($application->options->afl);
+        self::assertTrue($application->options->workerKeyspace);
         self::assertTrue($application->options->staleness);
         self::assertSame(4, $application->options->stalenessThresholds->persistentChecks);
         self::assertSame(5, $application->options->stalenessThresholds->severeSteps);

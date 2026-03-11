@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Mgrunder\Fuzz\Fuzz;
 
+use InvalidArgumentException;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -15,27 +16,28 @@ final class FuzzContext
         public readonly int $keys,
         public readonly int $members,
         public readonly int $seed,
+        public readonly ?WorkerKeyspace $workerKeyspace = null,
     ) {
         $this->randomizer = new Randomizer(new Mt19937($seed));
     }
 
-    public function randomKey(?RedisDataType $type): string
+    public function randomKey(?RedisDataType $type, int $flags = CommandFlags::READ): string
     {
         $type ??= $this->randomDataType();
 
-        return sprintf('%s:%d', $type->value, $this->randomInt(0, $this->keys));
+        return $this->formatKey($this->workerIdForFlags($flags), $type, $this->randomInt(0, $this->keys));
     }
 
     /**
      * @return list<string>
      */
-    public function randomKeys(RedisDataType $type): array
+    public function randomKeys(RedisDataType $type, int $flags = CommandFlags::READ): array
     {
         $count = $this->randomInt(1, $this->keys);
         $keys = [];
 
         for ($i = 0; $i < $count; $i++) {
-            $keys[] = sprintf('%s:%d', $type->value, $this->randomInt(0, $this->keys));
+            $keys[] = $this->formatKey($this->workerIdForFlags($flags), $type, $this->randomInt(0, $this->keys));
         }
 
         return $keys;
@@ -44,13 +46,14 @@ final class FuzzContext
     /**
      * @return array<string, string>
      */
-    public function randomKeyValueMap(RedisDataType $type): array
+    public function randomKeyValueMap(RedisDataType $type, int $flags = CommandFlags::WRITE): array
     {
         $count = $this->randomInt(1, $this->keys);
         $values = [];
 
         for ($i = 0; $i < $count; $i++) {
-            $values[sprintf('%s:%d', $type->value, $this->randomInt(0, $this->keys))] = $this->newPayload();
+            $key = $this->formatKey($this->workerIdForFlags($flags), $type, $this->randomInt(0, $this->keys));
+            $values[$key] = $this->newPayload();
         }
 
         return $values;
@@ -129,5 +132,31 @@ final class FuzzContext
     private function randomInt(int $min, int $max): int
     {
         return $this->randomizer->getInt($min, $max);
+    }
+
+    private function workerIdForFlags(int $flags): ?string
+    {
+        if ($this->workerKeyspace === null) {
+            return null;
+        }
+
+        if (($flags & CommandFlags::WRITE) !== 0) {
+            return $this->workerKeyspace->currentWorkerId;
+        }
+
+        if (($flags & CommandFlags::READ) !== 0) {
+            return $this->workerKeyspace->allWorkerIds[$this->randomIndex(count($this->workerKeyspace->allWorkerIds) - 1)];
+        }
+
+        throw new InvalidArgumentException('Key selection requires a read or write command flag.');
+    }
+
+    private function formatKey(?string $workerId, RedisDataType $type, int $index): string
+    {
+        if ($workerId === null) {
+            return sprintf('%s:%d', $type->value, $index);
+        }
+
+        return sprintf('%s:%s:%d', $workerId, $type->value, $index);
     }
 }

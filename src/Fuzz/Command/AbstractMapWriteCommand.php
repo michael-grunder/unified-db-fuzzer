@@ -20,7 +20,7 @@ abstract class AbstractMapWriteCommand extends RedisCommand
     {
         return new RedisOperation(
             $this->name(),
-            [$context->randomKeyValueMap($this->type() ?? RedisDataType::String)],
+            [$context->randomKeyValueMap($this->type() ?? RedisDataType::String, $this->flags())],
         );
     }
 }

@@ -7,6 +7,7 @@ namespace Mgrunder\Fuzz\Runtime;
 use Mgrunder\Fuzz\Fuzz\Command\CommandRegistry;
 use Mgrunder\Fuzz\Fuzz\Command\RedisCommand;
 use Mgrunder\Fuzz\Fuzz\FuzzContext;
+use Mgrunder\Fuzz\Fuzz\WorkerKeyspace;
 use Throwable;
 
 final class WorkerRunner
@@ -44,14 +45,22 @@ final class WorkerRunner
     {
         $commands = $this->commandRegistry->filterByTypes($options->commandTypes);
         $seed = $options->seed ?? random_int(1, PHP_INT_MAX);
-        $context = new FuzzContext($options->keys, $options->members, $seed + $workerIndex);
+        $context = new FuzzContext(
+            $options->keys,
+            $options->members,
+            $seed + $workerIndex,
+            $options->workerKeyspace
+                ? WorkerKeyspace::forWorker($workerIndex, $options->workers === 0 ? 1 : $options->workers)
+                : null,
+        );
         $statistics = new WorkerStatistics();
         $client = $this->connect($options);
         $lastReport = microtime(true);
+        $keyspaceLabel = $context->workerKeyspace === null ? 'shared' : $context->workerKeyspace->currentWorkerId;
 
         $logger->log(
             sprintf(
-                'worker started: worker=%d seed=%d ops=%s keys=%d mems=%d report_interval=%.1fs age_unit=%s %s %s',
+                'worker started: worker=%d seed=%d ops=%s keys=%d mems=%d report_interval=%.1fs age_unit=%s keyspace=%s %s %s',
                 $workerIndex,
                 $context->seed,
                 StatusFormatter::formatOps($options->ops),
@@ -59,6 +68,7 @@ final class WorkerRunner
                 $options->members,
                 $options->reportInterval,
                 $options->ageUnit->value,
+                $keyspaceLabel,
                 $options->commandTypes === [] ? 'cmd_types=all' : 'cmd_types=' . implode(',', array_map(
                     static fn ($type): string => $type->value,
                     $options->commandTypes,

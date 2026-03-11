@@ -28,6 +28,7 @@ final readonly class WorkOptions
         public bool $flush = false,
         public ?int $seed = null,
         public bool $afl = false,
+        public bool $workerKeyspace = false,
         public bool $staleness = false,
         public StalenessThresholds $stalenessThresholds = new StalenessThresholds(),
     ) {

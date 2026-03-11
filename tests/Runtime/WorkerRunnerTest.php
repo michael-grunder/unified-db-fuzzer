@@ -183,4 +183,100 @@ final class WorkerRunnerTest extends TestCase
             'readTimeout' => 2.5,
         ], $captured);
     }
+
+    #[Test]
+    public function it_uses_worker_scoped_keys_for_writes_when_enabled(): void
+    {
+        $capture = new class() {
+            public ?string $key = null;
+        };
+
+        $runner = new WorkerRunner(
+            new class($capture) implements ClientFactory {
+                public function __construct(
+                    private readonly object $capture,
+                ) {
+                }
+
+                public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
+                {
+                    return new class($this->capture) implements RedisClient {
+                        public function __construct(
+                            private readonly object $capture,
+                        ) {
+                        }
+
+                        public function execute(RedisOperation $operation): mixed
+                        {
+                            $this->capture->key = $operation->primaryKey;
+
+                            return null;
+                        }
+
+                        public function flushDatabase(): void
+                        {
+                        }
+                    };
+                }
+            },
+            new CommandRegistry([new class() extends RedisCommand {
+                public function name(): string
+                {
+                    return 'set';
+                }
+
+                public function type(): RedisDataType
+                {
+                    return RedisDataType::String;
+                }
+
+                public function flags(): int
+                {
+                    return CommandFlags::WRITE;
+                }
+
+                public function createOperation(FuzzContext $context): RedisOperation
+                {
+                    $key = $context->randomKey($this->type(), $this->flags());
+
+                    return new RedisOperation('set', [$key, 'value'], $key);
+                }
+            }]),
+            new class() implements StatsProvider {
+                public function summary(): string
+                {
+                    return 'cache=unknown';
+                }
+            },
+        );
+
+        $runner->run(
+            new WorkOptions(
+                host: 'localhost',
+                port: 6379,
+                timeout: null,
+                readTimeout: null,
+                keys: 10,
+                members: 5,
+                workers: 3,
+                ops: 1,
+                reportInterval: 10.0,
+                ageUnit: AgeUnit::Microseconds,
+                seed: 7,
+                workerKeyspace: true,
+            ),
+            1,
+            new class() implements WorkerLogger {
+                public function log(string $message): void
+                {
+                }
+
+                public function updateWorkerStatus(\Mgrunder\Fuzz\Runtime\WorkerStatusSnapshot $snapshot): void
+                {
+                }
+            },
+        );
+
+        self::assertSame('worker-1:string:9', $capture->key);
+    }
 }

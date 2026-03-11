@@ -29,7 +29,7 @@ final class HmSetCommand extends RedisCommand
 
     public function createOperation(FuzzContext $context): RedisOperation
     {
-        $key = $context->randomKey($this->type());
+        $key = $context->randomKey($this->type(), $this->flags());
 
         return new RedisOperation(
             $this->name(),

@@ -19,7 +19,7 @@ abstract class AbstractMultiKeyCommand extends RedisCommand
 
     public function createOperation(FuzzContext $context): RedisOperation
     {
-        $keys = $context->randomKeys($this->type() ?? RedisDataType::String);
+        $keys = $context->randomKeys($this->type() ?? RedisDataType::String, $this->flags());
 
         return new RedisOperation(
             $this->name(),

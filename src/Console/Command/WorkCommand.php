@@ -58,6 +58,7 @@ final class WorkCommand extends Command
             ->addOption('seed', null, InputOption::VALUE_REQUIRED, 'Base RNG seed. Defaults to a random seed.')
             ->addOption('afl', null, InputOption::VALUE_NONE, 'Show an AFL-like full-screen status page instead of dense logs.')
             ->addOption('log-file', null, InputOption::VALUE_REQUIRED, 'Write worker logs to this file instead of stderr.')
+            ->addOption('worker-keyspace', null, InputOption::VALUE_NONE, 'Prefix normal-fuzz keys with per-worker IDs; writes stay local and reads may target any worker namespace.')
             ->addOption('flush', null, InputOption::VALUE_NONE, 'Flush the database before starting workers.')
             ->addOption('staleness', null, InputOption::VALUE_NONE, 'Run the shared-cache staleness regression fuzzer.')
             ->addOption('stale-persistent-checks', null, InputOption::VALUE_REQUIRED, 'Consecutive stale rechecks before classifying as persistent.', '3')
@@ -86,6 +87,7 @@ final class WorkCommand extends Command
                 flush: (bool) $input->getOption('flush'),
                 seed: $this->parseSeed($input->getOption('seed')),
                 afl: (bool) $input->getOption('afl'),
+                workerKeyspace: (bool) $input->getOption('worker-keyspace'),
                 staleness: (bool) $input->getOption('staleness'),
                 stalenessThresholds: new StalenessThresholds(
                     persistentChecks: $this->toInt($input->getOption('stale-persistent-checks'), '--stale-persistent-checks'),

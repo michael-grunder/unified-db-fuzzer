@@ -39,12 +39,13 @@ final class WorkerOrchestrator implements WorkApplication
             if (!$options->afl) {
                 $logger->log(
                     sprintf(
-                        'running in non-forking mode: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
+                        'running in non-forking mode: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s keyspace=%s cmd_types=%s',
                         StatusFormatter::formatOps($options->ops),
                         $options->keys,
                         $options->members,
                         $options->reportInterval,
                         $options->ageUnit->value,
+                        $options->workerKeyspace ? 'worker-scoped' : 'shared',
                         $this->formatCommandTypes($options),
                     ),
                 );
@@ -63,13 +64,14 @@ final class WorkerOrchestrator implements WorkApplication
         if (!$options->afl) {
             $logger->log(
                 sprintf(
-                    'spawning %d workers: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s cmd_types=%s',
+                    'spawning %d workers: ops=%s keys=%d mems=%d interval=%.1fs age_unit=%s keyspace=%s cmd_types=%s',
                     $options->workers,
                     StatusFormatter::formatOps($options->ops),
                     $options->keys,
                     $options->members,
                     $options->reportInterval,
                     $options->ageUnit->value,
+                    $options->workerKeyspace ? 'worker-scoped' : 'shared',
                     $this->formatCommandTypes($options),
                 ),
             );
