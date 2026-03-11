@@ -481,6 +481,143 @@ final class StalenessWorkerRunnerTest extends TestCase
         self::assertSame([], $snapshot->currentTopKeys);
     }
 
+    #[Test]
+    public function it_reprobes_missing_after_create_keys_and_clears_them_when_the_cache_catches_up(): void
+    {
+        $runner = new StalenessWorkerRunner($this->responseFactory([
+            false,
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 1, 'worker-1', 2, 'fresh'),
+        ]), $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 2, 'truth'),
+        ]));
+
+        $options = new WorkOptions(
+            host: 'localhost',
+            port: 6379,
+            timeout: null,
+            readTimeout: null,
+            keys: 1,
+            members: 1,
+            workers: 0,
+            ops: 2,
+            reportInterval: 10.0,
+            ageUnit: AgeUnit::Microseconds,
+            seed: 2,
+            staleness: true,
+            stalenessThresholds: new StalenessThresholds(delayBucketsUs: [0]),
+        );
+        $statistics = new StalenessWorkerStatistics($options->stalenessThresholds->topN);
+        $cacheClient = $this->responseFactory([
+            false,
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 1, 'worker-1', 2, 'fresh'),
+        ])->connect('localhost', 6379);
+        $truthClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 2, 'truth'),
+        ])->connect('localhost', 6379);
+
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+
+        $probe = \Closure::bind(
+            function (WorkOptions $options, RedisClient $cacheClient, RedisClient $truthClient, StalenessWorkerStatistics $statistics): void {
+                $this->maybeReprobeCurrentStaleKey($options, $cacheClient, $truthClient, $statistics);
+            },
+            $runner,
+            $runner,
+        );
+        self::assertInstanceOf(\Closure::class, $probe);
+
+        for ($i = 0; $i < 8; $i++) {
+            $statistics->recordDone();
+        }
+
+        $probe($options, $cacheClient, $truthClient, $statistics);
+        $snapshot = $statistics->snapshot(0, $options, 'running');
+
+        self::assertSame(0, $statistics->hardFailures);
+        self::assertSame([], $snapshot->currentTopKeys);
+    }
+
+    #[Test]
+    public function it_requires_follow_up_probes_before_failing_missing_after_create(): void
+    {
+        $runner = new StalenessWorkerRunner($this->responseFactory([
+            false,
+            false,
+            false,
+            false,
+        ]), $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 2, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 3, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 4, 'truth'),
+        ]));
+
+        $options = new WorkOptions(
+            host: 'localhost',
+            port: 6379,
+            timeout: null,
+            readTimeout: null,
+            keys: 1,
+            members: 1,
+            workers: 0,
+            ops: 4,
+            reportInterval: 10.0,
+            ageUnit: AgeUnit::Microseconds,
+            seed: 2,
+            staleness: true,
+            stalenessThresholds: new StalenessThresholds(persistentChecks: 3, delayBucketsUs: [0]),
+        );
+        $statistics = new StalenessWorkerStatistics($options->stalenessThresholds->topN);
+        $cacheClient = $this->responseFactory([
+            false,
+            false,
+            false,
+            false,
+        ])->connect('localhost', 6379);
+        $truthClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 2, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 3, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 4, 'truth'),
+        ])->connect('localhost', 6379);
+
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+
+        self::assertSame(0, $statistics->hardFailures);
+
+        $reprobe = \Closure::bind(
+            function (WorkOptions $options, RedisClient $cacheClient, RedisClient $truthClient, StalenessWorkerStatistics $statistics): void {
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $statistics->recordDone();
+                $this->maybeReprobeCurrentStaleKey($options, $cacheClient, $truthClient, $statistics);
+            },
+            $runner,
+            $runner,
+        );
+        self::assertInstanceOf(\Closure::class, $reprobe);
+
+        $reprobe($options, $cacheClient, $truthClient, $statistics);
+        self::assertSame(0, $statistics->hardFailures);
+
+        $reprobe($options, $cacheClient, $truthClient, $statistics);
+        self::assertSame(0, $statistics->hardFailures);
+
+        $reprobe($options, $cacheClient, $truthClient, $statistics);
+        self::assertSame(1, $statistics->hardFailures);
+        $snapshot = $statistics->snapshot(0, $options, 'running');
+        self::assertSame('persistent_stale', $snapshot->currentTopKeys[0]['classification']);
+    }
+
     /**
      * @param list<mixed> $responses
      */

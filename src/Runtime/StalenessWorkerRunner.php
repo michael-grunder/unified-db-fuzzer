@@ -16,6 +16,7 @@ use Throwable;
 final class StalenessWorkerRunner
 {
     private const GLOBAL_VERSION_KEY = 'fuzz:global_version';
+    private const STALE_REPROBE_INTERVAL = 8;
 
     private readonly GetCommand $getCommand;
     private readonly SetCommand $setCommand;
@@ -26,6 +27,7 @@ final class StalenessWorkerRunner
     private array $keyStates = [];
 
     private int $writerSeq = 0;
+    private int $staleProbeCursor = 0;
 
     public function __construct(
         private readonly ClientFactory $cacheClientFactory,
@@ -63,6 +65,7 @@ final class StalenessWorkerRunner
         for ($i = 0; $options->ops < 0 || $i < $options->ops; $i++) {
             try {
                 $this->executeOperation($context, $options, $cacheClient, $truthClient, $statistics);
+                $this->maybeReprobeCurrentStaleKey($options, $cacheClient, $truthClient, $statistics);
             } catch (Throwable $throwable) {
                 $logger->log(sprintf('staleness worker exception after %d ops: %s', $statistics->done, WorkerStatistics::summarizeThrowable($throwable)));
                 $terminatedEarly = true;
@@ -263,8 +266,31 @@ final class StalenessWorkerRunner
             $observation = $observation->with(suspicious: true);
         }
 
+        $observation = $this->applyFollowUpState($observation, $phase, $options->stalenessThresholds);
         $hardFailure = $this->isHardFailure($observation, $options->stalenessThresholds);
         $statistics->observe($observation, $hardFailure);
+    }
+
+    private function maybeReprobeCurrentStaleKey(
+        WorkOptions $options,
+        RedisClient $cacheClient,
+        RedisClient $truthClient,
+        StalenessWorkerStatistics $statistics,
+    ): void {
+        if ($statistics->done % self::STALE_REPROBE_INTERVAL !== 0) {
+            return;
+        }
+
+        $keys = $statistics->currentObservationKeys();
+        if ($keys === []) {
+            return;
+        }
+
+        $key = $keys[$this->staleProbeCursor % count($keys)];
+        $this->staleProbeCursor++;
+
+        $statistics->recordRead();
+        $this->compareKey($key, $options, $cacheClient, $truthClient, $statistics, 'stale_follow_up');
     }
 
     private function applyKeyState(ObservedStaleness $observation): ObservedStaleness
@@ -319,6 +345,41 @@ final class StalenessWorkerRunner
         );
     }
 
+    private function applyFollowUpState(
+        ObservedStaleness $observation,
+        string $phase,
+        StalenessThresholds $thresholds,
+    ): ObservedStaleness {
+        $state = $this->keyStates[$observation->key] ??= new StalenessKeyState();
+
+        if ($observation->classification !== 'stale_missing_after_create') {
+            $state->missingAfterCreateFollowUpCount = 0;
+
+            return $observation->with(
+                debug: $observation->debug + ['missing_after_create_follow_up_count' => 0],
+            );
+        }
+
+        if ($phase === 'stale_follow_up') {
+            $state->missingAfterCreateFollowUpCount++;
+        } else {
+            $state->missingAfterCreateFollowUpCount = 0;
+        }
+
+        $classification = $observation->classification;
+        if ($state->missingAfterCreateFollowUpCount >= $thresholds->persistentChecks) {
+            $classification = 'persistent_stale';
+        }
+
+        return $observation->with(
+            suspicious: true,
+            classification: $classification,
+            debug: $observation->debug + [
+                'missing_after_create_follow_up_count' => $state->missingAfterCreateFollowUpCount,
+            ],
+        );
+    }
+
     private function clearKeyState(string $key): void
     {
         $state = $this->keyStates[$key] ?? null;
@@ -329,6 +390,7 @@ final class StalenessWorkerRunner
         $state->staleStreak = 0;
         $state->sameStaleVersionCount = 0;
         $state->lastStaleCachedVersion = null;
+        $state->missingAfterCreateFollowUpCount = 0;
     }
 
     private function classifyPersistentObservation(
@@ -362,7 +424,7 @@ final class StalenessWorkerRunner
             return true;
         }
 
-        if (in_array($observation->classification, ['stale_exists_after_delete', 'stale_missing_after_create', 'persistent_stale'], true)) {
+        if (in_array($observation->classification, ['stale_exists_after_delete', 'persistent_stale'], true)) {
             return true;
         }
 

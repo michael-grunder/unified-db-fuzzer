@@ -39,7 +39,7 @@ Useful options:
 - `--cmd-types=string,hash,zset` filters the registered fuzz commands by Redis data type.
 - `--seed=1234` makes command selection and argument generation reproducible.
 - `--worker-keyspace` namespaces normal fuzz keys as `<worker>:<type>:<n>`. Reads may target any worker namespace, while writes stay pinned to the current worker so cached keys from other workers are not actively overwritten.
-- `--afl` switches `bin/fuzz` to a full-screen status page instead of dense log lines. In staleness mode it shows per-worker worst observations plus two global stale-key leaderboards: keys that are still stale right now and the worst stale observations seen overall. Each row includes the stale-read streak and how long ago that key was last observed stale, so it is clear whether a row is actively being refreshed or just lingering from an older snapshot.
+- `--afl` switches `bin/fuzz` to a full-screen status page instead of dense log lines. In staleness mode it shows per-worker worst observations plus two global stale-key leaderboards: keys that are still stale right now and the worst stale observations seen overall. Each row includes the stale-read streak and how long ago that key was last observed stale, so it is clear whether a row is actively being refreshed or just lingering from an older snapshot. Workers also periodically reprobe keys that remain on the live stale list so transient `stale_missing_after_create` cases can clear naturally.
 - `--log-file=/tmp/fuzz.log` writes compact Monolog output like `[1710111222.123456 INFO] spawned worker pid=1234` to a file instead of stderr.
 - `--timeout=1.5` sets the Relay connection timeout in seconds.
 - `--read-timeout=5.0` sets the Relay read timeout in seconds.

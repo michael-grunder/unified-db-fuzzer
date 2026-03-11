@@ -105,6 +105,14 @@ final class StalenessWorkerStatistics
         unset($this->currentObservations[$key]);
     }
 
+    /**
+     * @return list<string>
+     */
+    public function currentObservationKeys(): array
+    {
+        return array_keys($this->currentObservations);
+    }
+
     public function formatProgress(WorkOptions $options): string
     {
         $elapsed = microtime(true) - $this->startedAt;
