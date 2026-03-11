@@ -10,4 +10,5 @@ final class StalenessKeyState
     public ?int $maxTruthVersionSeen = null;
     public ?int $lastStaleCachedVersion = null;
     public int $sameStaleVersionCount = 0;
+    public int $staleStreak = 0;
 }

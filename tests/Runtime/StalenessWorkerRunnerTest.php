@@ -11,6 +11,7 @@ use Mgrunder\Fuzz\Runtime\ClientFactory;
 use Mgrunder\Fuzz\Runtime\RedisClient;
 use Mgrunder\Fuzz\Runtime\StalenessWorkerStatistics;
 use Mgrunder\Fuzz\Runtime\StalenessWorkerRunner;
+use Mgrunder\Fuzz\Runtime\StalenessThresholds;
 use Mgrunder\Fuzz\Runtime\WorkOptions;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -321,5 +322,145 @@ final class StalenessWorkerRunnerTest extends TestCase
         self::assertFalse($summary->terminatedEarly);
         self::assertSame(1, $summary->statistics->done);
         self::assertSame(3, $connections);
+    }
+
+    #[Test]
+    public function it_separates_currently_stale_keys_from_historical_worst_keys_in_snapshots(): void
+    {
+        $runner = new StalenessWorkerRunner($this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 1, 'worker-1', 2, 'fresh'),
+        ]), $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 2, 'truth'),
+        ]));
+
+        $options = new WorkOptions(
+            host: 'localhost',
+            port: 6379,
+            timeout: null,
+            readTimeout: null,
+            keys: 1,
+            members: 1,
+            workers: 0,
+            ops: 2,
+            reportInterval: 10.0,
+            ageUnit: AgeUnit::Microseconds,
+            seed: 2,
+            staleness: true,
+            stalenessThresholds: new StalenessThresholds(delayBucketsUs: [0]),
+        );
+        $statistics = new StalenessWorkerStatistics($options->stalenessThresholds->topN);
+        $cacheClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 1, 'worker-1', 2, 'fresh'),
+        ])->connect('localhost', 6379);
+        $truthClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 2, 'truth'),
+        ])->connect('localhost', 6379);
+
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+
+        $snapshot = $statistics->snapshot(0, $options, 'running');
+
+        self::assertCount(1, $snapshot->topKeys);
+        self::assertSame('fuzz:string:0', $snapshot->topKeys[0]['key']);
+        self::assertSame(1, $snapshot->topKeys[0]['consecutive_stale']);
+        self::assertSame([], $snapshot->currentTopKeys);
+    }
+
+    #[Test]
+    public function it_tracks_consecutive_stale_reads_in_a_row(): void
+    {
+        $runner = new StalenessWorkerRunner($this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale-1'),
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale-1'),
+        ]), $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+        ]));
+
+        $options = new WorkOptions(
+            host: 'localhost',
+            port: 6379,
+            timeout: null,
+            readTimeout: null,
+            keys: 1,
+            members: 1,
+            workers: 0,
+            ops: 2,
+            reportInterval: 10.0,
+            ageUnit: AgeUnit::Microseconds,
+            seed: 2,
+            staleness: true,
+            stalenessThresholds: new StalenessThresholds(delayBucketsUs: [0]),
+        );
+        $statistics = new StalenessWorkerStatistics($options->stalenessThresholds->topN);
+        $cacheClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale-1'),
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale-1'),
+        ])->connect('localhost', 6379);
+        $truthClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+        ])->connect('localhost', 6379);
+
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+
+        $snapshot = $statistics->snapshot(0, $options, 'running');
+
+        self::assertCount(1, $snapshot->currentTopKeys);
+        self::assertSame(2, $snapshot->currentTopKeys[0]['consecutive_stale']);
+        self::assertSame(2, $snapshot->topKeys[0]['consecutive_stale']);
+    }
+
+    /**
+     * @param list<string> $responses
+     */
+    private function responseFactory(array $responses): ClientFactory
+    {
+        return new class($responses) implements ClientFactory {
+            /**
+             * @param list<string> $responses
+             */
+            public function __construct(
+                private readonly array $responses,
+            ) {
+            }
+
+            public function connect(string $host, int $port, ?float $timeout = null, ?float $readTimeout = null): RedisClient
+            {
+                return new class($this->responses) implements RedisClient {
+                    private int $index = 0;
+
+                    /**
+                     * @param list<string> $responses
+                     */
+                    public function __construct(
+                        private readonly array $responses,
+                    ) {
+                    }
+
+                    public function execute(RedisOperation $operation): mixed
+                    {
+                        $response = $this->responses[min($this->index, count($this->responses) - 1)];
+                        $this->index++;
+
+                        return $response;
+                    }
+
+                    public function flushDatabase(): void
+                    {
+                    }
+                };
+            }
+        };
     }
 }

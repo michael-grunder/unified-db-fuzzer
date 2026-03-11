@@ -187,10 +187,20 @@ final class StalenessWorkerRunner
         $observation = $this->getCommand->observeStaleness($operation, $cached, $truth, hrtime(true));
 
         if ($observation === null) {
+            $this->clearKeyState($key);
+            $statistics->clearCurrentObservation($key);
+
             return;
         }
 
         $observation = $this->applyKeyState($observation);
+        if ($observation->classification === 'fresh') {
+            $this->clearKeyState($key);
+            $statistics->clearCurrentObservation($key);
+
+            return;
+        }
+
         $rechecks = 1;
 
         if ($observation->classification === 'transient_stale' || str_starts_with($observation->classification, 'stale_')) {
@@ -205,6 +215,8 @@ final class StalenessWorkerRunner
                 $truth = $truthClient->execute($operation);
                 $recheck = $this->getCommand->observeStaleness($operation, $cached, $truth, hrtime(true));
                 if ($recheck === null) {
+                    $this->clearKeyState($key);
+                    $statistics->clearCurrentObservation($key);
                     $observation = $observation->with(
                         classification: 'transient_stale',
                         debug: $observation->debug + [
@@ -219,6 +231,8 @@ final class StalenessWorkerRunner
                 $observation = $this->applyKeyState($recheck);
 
                 if ($observation->classification === 'fresh') {
+                    $this->clearKeyState($key);
+                    $statistics->clearCurrentObservation($key);
                     $observation = $recheck->with(
                         classification: 'transient_stale',
                         debug: $recheck->debug + [
@@ -263,6 +277,8 @@ final class StalenessWorkerRunner
         }
 
         if (($observation->stepsBehind ?? 0) > 0 && $observation->cachedVersion !== null) {
+            $state->staleStreak++;
+
             if ($state->lastStaleCachedVersion === $observation->cachedVersion) {
                 $state->sameStaleVersionCount++;
             } else {
@@ -270,6 +286,7 @@ final class StalenessWorkerRunner
                 $state->lastStaleCachedVersion = $observation->cachedVersion;
             }
         } else {
+            $state->staleStreak = 0;
             $state->sameStaleVersionCount = 0;
             $state->lastStaleCachedVersion = null;
         }
@@ -286,11 +303,24 @@ final class StalenessWorkerRunner
             suspicious: $observation->suspicious || $regression,
             classification: $classification,
             debug: $observation->debug + [
+                'stale_streak' => $state->staleStreak,
                 'same_stale_version_count' => $state->sameStaleVersionCount,
                 'max_cached_version_seen' => $state->maxCachedVersionSeen,
                 'max_truth_version_seen' => $state->maxTruthVersionSeen,
             ],
         );
+    }
+
+    private function clearKeyState(string $key): void
+    {
+        $state = $this->keyStates[$key] ?? null;
+        if ($state === null) {
+            return;
+        }
+
+        $state->staleStreak = 0;
+        $state->sameStaleVersionCount = 0;
+        $state->lastStaleCachedVersion = null;
     }
 
     private function classifyPersistentObservation(

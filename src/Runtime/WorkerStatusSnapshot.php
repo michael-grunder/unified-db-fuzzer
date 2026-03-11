@@ -8,7 +8,8 @@ final readonly class WorkerStatusSnapshot
 {
     /**
      * @param array<string, int|float|string|null> $metrics
-     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool}> $topKeys
+     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int}> $topKeys
+     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int}> $currentTopKeys
      */
     public function __construct(
         public int $workerIndex,
@@ -23,6 +24,7 @@ final readonly class WorkerStatusSnapshot
         public ?string $lastException = null,
         public array $metrics = [],
         public array $topKeys = [],
+        public array $currentTopKeys = [],
     ) {
     }
 
@@ -44,6 +46,7 @@ final readonly class WorkerStatusSnapshot
             'last_exception' => $this->lastException,
             'metrics' => $this->metrics,
             'top_keys' => $this->topKeys,
+            'current_top_keys' => $this->currentTopKeys,
         ];
     }
 
@@ -65,6 +68,7 @@ final readonly class WorkerStatusSnapshot
             lastException: isset($data['last_exception']) ? (string) $data['last_exception'] : null,
             metrics: is_array($data['metrics'] ?? null) ? $data['metrics'] : [],
             topKeys: is_array($data['top_keys'] ?? null) ? array_values($data['top_keys']) : [],
+            currentTopKeys: is_array($data['current_top_keys'] ?? null) ? array_values($data['current_top_keys']) : [],
         );
     }
 }

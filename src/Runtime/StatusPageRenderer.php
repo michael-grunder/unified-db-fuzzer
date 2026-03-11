@@ -70,8 +70,13 @@ final class StatusPageRenderer
 
         if ($options->staleness) {
             $lines[] = '';
-            $lines[] = 'most stale keys:';
-            foreach ($this->topKeyLines($snapshots) as $line) {
+            $lines[] = 'top stale keys (still stale):';
+            foreach ($this->topKeyLines($snapshots, current: true) as $line) {
+                $lines[] = $line;
+            }
+            $lines[] = '';
+            $lines[] = 'worst stale keys seen:';
+            foreach ($this->topKeyLines($snapshots, current: false) as $line) {
                 $lines[] = $line;
             }
         }
@@ -148,12 +153,13 @@ final class StatusPageRenderer
      * @param list<WorkerStatusSnapshot> $snapshots
      * @return list<string>
      */
-    private function topKeyLines(array $snapshots): array
+    private function topKeyLines(array $snapshots, bool $current): array
     {
         $entries = [];
 
         foreach ($snapshots as $snapshot) {
-            foreach ($snapshot->topKeys as $entry) {
+            $source = $current ? $snapshot->currentTopKeys : $snapshot->topKeys;
+            foreach ($source as $entry) {
                 $entries[] = array_merge($entry, ['worker_index' => $snapshot->workerIndex]);
             }
         }
@@ -171,6 +177,12 @@ final class StatusPageRenderer
                 return $rightSteps <=> $leftSteps;
             }
 
+            $leftStreak = $left['consecutive_stale'];
+            $rightStreak = $right['consecutive_stale'];
+            if ($leftStreak !== $rightStreak) {
+                return $rightStreak <=> $leftStreak;
+            }
+
             return strcmp($left['key'], $right['key']);
         });
 
@@ -181,11 +193,12 @@ final class StatusPageRenderer
         $lines = [];
         foreach (array_slice($entries, 0, 8) as $entry) {
             $lines[] = sprintf(
-                '  w%02d %-20s class=%-26s steps=%-4s age=%s',
+                '  w%02d %-20s class=%-26s steps=%-4s seen=%-3d age=%s',
                 (int) $entry['worker_index'],
                 $this->clip($entry['key'], 20),
                 $this->clip($entry['classification'], 26),
                 is_int($entry['steps_behind'] ?? null) ? (string) $entry['steps_behind'] : 'n/a',
+                (string) $entry['consecutive_stale'],
                 $entry['age'],
             );
         }

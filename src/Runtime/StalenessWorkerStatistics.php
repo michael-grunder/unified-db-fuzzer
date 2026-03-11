@@ -26,6 +26,11 @@ final class StalenessWorkerStatistics
      */
     public array $topObservations = [];
 
+    /**
+     * @var array<string, ObservedStaleness>
+     */
+    private array $currentObservations = [];
+
     public function __construct(
         private readonly int $topN,
     ) {
@@ -78,6 +83,10 @@ final class StalenessWorkerStatistics
             $this->hardFailures++;
         }
 
+        if (!$this->shouldTrackObservation($observation)) {
+            return;
+        }
+
         if ($this->worstObservation === null || self::compare($observation, $this->worstObservation) < 0) {
             $this->worstObservation = $observation;
         }
@@ -85,6 +94,13 @@ final class StalenessWorkerStatistics
         $this->topObservations[] = $observation;
         usort($this->topObservations, self::compare(...));
         $this->topObservations = array_slice($this->topObservations, 0, $this->topN);
+
+        $this->currentObservations[$observation->key] = $observation;
+    }
+
+    public function clearCurrentObservation(string $key): void
+    {
+        unset($this->currentObservations[$key]);
     }
 
     public function formatProgress(WorkOptions $options): string
@@ -160,7 +176,18 @@ final class StalenessWorkerStatistics
             return $rightSteps <=> $leftSteps;
         }
 
+        $leftStreak = (int) ($left->debug['stale_streak'] ?? 0);
+        $rightStreak = (int) ($right->debug['stale_streak'] ?? 0);
+        if ($leftStreak !== $rightStreak) {
+            return $rightStreak <=> $leftStreak;
+        }
+
         return ($right->ageNs ?? -1) <=> ($left->ageNs ?? -1);
+    }
+
+    private function shouldTrackObservation(ObservedStaleness $observation): bool
+    {
+        return $observation->classification !== 'fresh';
     }
 
     public function snapshot(int $workerIndex, WorkOptions $options, string $state): WorkerStatusSnapshot
@@ -189,16 +216,38 @@ final class StalenessWorkerStatistics
                 'persistent_stale' => $this->persistentStale,
                 'hard_failures' => $this->hardFailures,
             ],
-            topKeys: array_map(
-                fn (ObservedStaleness $observation): array => [
-                    'key' => $observation->key,
-                    'classification' => $observation->classification,
-                    'steps_behind' => $observation->stepsBehind,
-                    'age' => StatusFormatter::formatAgeValue($observation->ageNs, $options->ageUnit),
-                    'regression' => $observation->regression,
-                ],
-                $this->topObservations,
-            ),
+            topKeys: $this->formatObservations($this->topObservations, $options),
+            currentTopKeys: $this->formatObservations($this->currentTopObservations(), $options),
         );
+    }
+
+    /**
+     * @param list<ObservedStaleness> $observations
+     * @return list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int}>
+     */
+    private function formatObservations(array $observations, WorkOptions $options): array
+    {
+        return array_map(
+            fn (ObservedStaleness $observation): array => [
+                'key' => $observation->key,
+                'classification' => $observation->classification,
+                'steps_behind' => $observation->stepsBehind,
+                'age' => StatusFormatter::formatAgeValue($observation->ageNs, $options->ageUnit),
+                'regression' => $observation->regression,
+                'consecutive_stale' => (int) ($observation->debug['stale_streak'] ?? 0),
+            ],
+            $observations,
+        );
+    }
+
+    /**
+     * @return list<ObservedStaleness>
+     */
+    private function currentTopObservations(): array
+    {
+        $observations = array_values($this->currentObservations);
+        usort($observations, self::compare(...));
+
+        return array_slice($observations, 0, $this->topN);
     }
 }

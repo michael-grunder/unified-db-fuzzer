@@ -59,6 +59,15 @@ final class StatusPageRendererTest extends TestCase
                     'steps_behind' => 5,
                     'age' => '1.250ms',
                     'regression' => true,
+                    'consecutive_stale' => 4,
+                ]],
+                currentTopKeys: [[
+                    'key' => 'fuzz:string:3',
+                    'classification' => 'stale_regression',
+                    'steps_behind' => 5,
+                    'age' => '1.250ms',
+                    'regression' => true,
+                    'consecutive_stale' => 4,
                 ]],
             ),
             new WorkerStatusSnapshot(
@@ -86,7 +95,9 @@ final class StatusPageRendererTest extends TestCase
                     'steps_behind' => 3,
                     'age' => '0.750ms',
                     'regression' => false,
+                    'consecutive_stale' => 2,
                 ]],
+                currentTopKeys: [],
             ),
         ], 2, microtime(true) - 3.0);
 
@@ -94,8 +105,10 @@ final class StatusPageRendererTest extends TestCase
         self::assertStringContainsString('workers:', $screen);
         self::assertStringContainsString('w00 running', $screen);
         self::assertStringContainsString('w01 finished', $screen);
-        self::assertStringContainsString('most stale keys:', $screen);
+        self::assertStringContainsString('top stale keys (still stale):', $screen);
+        self::assertStringContainsString('worst stale keys seen:', $screen);
         self::assertStringContainsString('fuzz:string:3', $screen);
         self::assertStringContainsString('stale_regression', $screen);
+        self::assertStringContainsString('seen=4', $screen);
     }
 }
