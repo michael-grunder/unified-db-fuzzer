@@ -159,6 +159,10 @@ final class StatusPageRenderer
         $entries = [];
 
         foreach ($snapshots as $snapshot) {
+            if ($current && $snapshot->state !== 'running') {
+                continue;
+            }
+
             $source = $current ? $snapshot->currentTopKeys : $snapshot->topKeys;
             foreach ($source as $entry) {
                 $entries[] = array_merge($entry, ['worker_index' => $snapshot->workerIndex]);

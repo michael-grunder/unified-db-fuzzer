@@ -421,6 +421,9 @@ final class StalenessWorkerRunnerTest extends TestCase
         self::assertSame(2, $snapshot->currentTopKeys[0]['consecutive_stale']);
         self::assertIsFloat($snapshot->currentTopKeys[0]['last_seen_at']);
         self::assertSame(2, $snapshot->topKeys[0]['consecutive_stale']);
+
+        $nextSnapshot = $statistics->snapshot(0, $options, 'running');
+        self::assertSame([], $nextSnapshot->currentTopKeys);
     }
 
     #[Test]

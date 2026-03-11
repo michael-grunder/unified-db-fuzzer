@@ -114,5 +114,8 @@ final class StatusPageRendererTest extends TestCase
         self::assertStringContainsString('fuzz:string:3', $screen);
         self::assertStringContainsString('stale_regression', $screen);
         self::assertStringContainsString(' 4 ', $screen);
+
+        $stillStaleSection = explode("\n\nworst stale keys seen:\n", explode("top stale keys (still stale):\n", $screen)[1])[0];
+        self::assertStringNotContainsString('fuzz:string:9', $stillStaleSection);
     }
 }

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `--worker-keyspace` for the normal fuzzer so each worker writes only within its own key namespace while reads can probe any worker namespace.
 - Symfony Console application bootstrap in `bin/fuzz` with `work.php` kept as a compatibility wrapper.
+- The staleness AFL "still stale" leaderboard now only shows keys re-observed stale since each worker's previous status snapshot, and it excludes finished workers so frozen rows do not linger as live stale entries.
 - Modular fuzzing domain model with reusable Redis command classes, worker orchestration, and PHPUnit coverage.
 - Seeded fuzz context support for reproducible command and argument selection.
 - Optional `work` command timeout flags for configuring Relay connection and read timeouts.

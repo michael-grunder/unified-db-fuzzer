@@ -30,11 +30,13 @@ final class StalenessWorkerStatistics
      * @var array<string, ObservedStaleness>
      */
     private array $currentObservations = [];
+    private float $lastSnapshotAt;
 
     public function __construct(
         private readonly int $topN,
     ) {
         $this->startedAt = microtime(true);
+        $this->lastSnapshotAt = $this->startedAt;
     }
 
     public function recordDone(): void
@@ -202,8 +204,11 @@ final class StalenessWorkerStatistics
 
     public function snapshot(int $workerIndex, WorkOptions $options, string $state): WorkerStatusSnapshot
     {
-        $elapsed = microtime(true) - $this->startedAt;
+        $snapshotTime = microtime(true);
+        $elapsed = $snapshotTime - $this->startedAt;
         $rate = $elapsed > 0 ? ($this->done / $elapsed) : 0.0;
+        $currentTopKeys = $this->formatObservations($this->currentTopObservations($this->lastSnapshotAt), $options);
+        $this->lastSnapshotAt = $snapshotTime;
 
         return new WorkerStatusSnapshot(
             workerIndex: $workerIndex,
@@ -213,7 +218,7 @@ final class StalenessWorkerStatistics
             done: $this->done,
             targetOps: $options->ops > 0 ? $options->ops : null,
             startedAt: $this->startedAt,
-            updatedAt: microtime(true),
+            updatedAt: $snapshotTime,
             opsPerSecond: $rate,
             metrics: [
                 'reads' => $this->reads,
@@ -227,7 +232,7 @@ final class StalenessWorkerStatistics
                 'hard_failures' => $this->hardFailures,
             ],
             topKeys: $this->formatObservations($this->topObservations, $options),
-            currentTopKeys: $this->formatObservations($this->currentTopObservations(), $options),
+            currentTopKeys: $currentTopKeys,
         );
     }
 
@@ -254,9 +259,12 @@ final class StalenessWorkerStatistics
     /**
      * @return list<ObservedStaleness>
      */
-    private function currentTopObservations(): array
+    private function currentTopObservations(float $since): array
     {
-        $observations = array_values($this->currentObservations);
+        $observations = array_values(array_filter(
+            $this->currentObservations,
+            static fn (ObservedStaleness $observation): bool => ((float) ($observation->debug['last_seen_at'] ?? 0.0)) >= $since,
+        ));
         usort($observations, self::compare(...));
 
         return array_slice($observations, 0, $this->topN);
