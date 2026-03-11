@@ -114,7 +114,7 @@ final class StalenessWorkerRunner
 
         if ($roll < 70) {
             $statistics->recordDelete();
-            $this->deleteKey($key, $cacheClient, $truthClient);
+            $this->deleteKey($key, $cacheClient, $truthClient, $statistics);
 
             return;
         }
@@ -133,7 +133,7 @@ final class StalenessWorkerRunner
 
         if ($roll < 90) {
             $statistics->recordDelete();
-            $this->deleteKey($key, $cacheClient, $truthClient);
+            $this->deleteKey($key, $cacheClient, $truthClient, $statistics);
             $this->writeKey($key, $context, $truthClient, $statistics);
 
             return;
@@ -148,6 +148,8 @@ final class StalenessWorkerRunner
     private function writeKey(string $key, FuzzContext $context, RedisClient $truthClient, StalenessWorkerStatistics $statistics): void
     {
         $statistics->recordWrite();
+        $this->clearKeyState($key);
+        $statistics->clearCurrentObservation($key);
         $version = $truthClient->execute(new RedisOperation('incr', [self::GLOBAL_VERSION_KEY]));
         $writtenNs = hrtime(true);
         $writerSeq = ++$this->writerSeq;
@@ -165,8 +167,14 @@ final class StalenessWorkerRunner
         $truthClient->execute(new RedisOperation($this->setCommand->name(), [$key, $raw], $key));
     }
 
-    private function deleteKey(string $key, RedisClient $cacheClient, RedisClient $truthClient): void
-    {
+    private function deleteKey(
+        string $key,
+        RedisClient $cacheClient,
+        RedisClient $truthClient,
+        StalenessWorkerStatistics $statistics,
+    ): void {
+        $this->clearKeyState($key);
+        $statistics->clearCurrentObservation($key);
         $operation = new RedisOperation('del', [$key], $key);
         $cacheClient->execute($operation);
         $truthClient->execute($operation);

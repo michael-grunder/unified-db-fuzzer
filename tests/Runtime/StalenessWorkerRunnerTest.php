@@ -6,6 +6,7 @@ namespace Mgrunder\Fuzz\Tests\Runtime;
 
 use Mgrunder\Fuzz\Fuzz\AgeUnit;
 use Mgrunder\Fuzz\Fuzz\FreshnessEnvelope;
+use Mgrunder\Fuzz\Fuzz\FuzzContext;
 use Mgrunder\Fuzz\Fuzz\RedisOperation;
 use Mgrunder\Fuzz\Runtime\ClientFactory;
 use Mgrunder\Fuzz\Runtime\RedisClient;
@@ -422,14 +423,72 @@ final class StalenessWorkerRunnerTest extends TestCase
         self::assertSame(2, $snapshot->topKeys[0]['consecutive_stale']);
     }
 
+    #[Test]
+    public function it_clears_current_stale_entries_after_a_write_to_the_same_key(): void
+    {
+        $runner = new StalenessWorkerRunner($this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale'),
+            2,
+        ]), $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            3,
+            'OK',
+        ]));
+
+        $options = new WorkOptions(
+            host: 'localhost',
+            port: 6379,
+            timeout: null,
+            readTimeout: null,
+            keys: 1,
+            members: 1,
+            workers: 0,
+            ops: 2,
+            reportInterval: 10.0,
+            ageUnit: AgeUnit::Microseconds,
+            seed: 2,
+            staleness: true,
+            stalenessThresholds: new StalenessThresholds(delayBucketsUs: [0]),
+        );
+        $statistics = new StalenessWorkerStatistics($options->stalenessThresholds->topN);
+        $cacheClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 1, 100, 1, 'worker-1', 1, 'stale'),
+            2,
+        ])->connect('localhost', 6379);
+        $truthClient = $this->responseFactory([
+            FreshnessEnvelope::encode('fuzz:string:0', 2, 200, 2, 'worker-2', 1, 'truth'),
+            3,
+            'OK',
+        ])->connect('localhost', 6379);
+
+        $statistics->recordRead();
+        $runner->compareKey('fuzz:string:0', $options, $cacheClient, $truthClient, $statistics, 'read_compare');
+
+        $writeKey = \Closure::bind(
+            function (string $key, FuzzContext $context, RedisClient $truthClient, StalenessWorkerStatistics $statistics): void {
+                $this->writeKey($key, $context, $truthClient, $statistics);
+            },
+            $runner,
+            $runner,
+        );
+        self::assertInstanceOf(\Closure::class, $writeKey);
+        $context = new FuzzContext(1, 1, 1234);
+        $writeKey('fuzz:string:0', $context, $truthClient, $statistics);
+
+        $snapshot = $statistics->snapshot(0, $options, 'running');
+
+        self::assertCount(1, $snapshot->topKeys);
+        self::assertSame([], $snapshot->currentTopKeys);
+    }
+
     /**
-     * @param list<string> $responses
+     * @param list<mixed> $responses
      */
     private function responseFactory(array $responses): ClientFactory
     {
         return new class($responses) implements ClientFactory {
             /**
-             * @param list<string> $responses
+             * @param list<mixed> $responses
              */
             public function __construct(
                 private readonly array $responses,
@@ -442,7 +501,7 @@ final class StalenessWorkerRunnerTest extends TestCase
                     private int $index = 0;
 
                     /**
-                     * @param list<string> $responses
+                     * @param list<mixed> $responses
                      */
                     public function __construct(
                         private readonly array $responses,

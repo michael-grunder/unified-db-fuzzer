@@ -110,9 +110,9 @@ final class StatusPageRendererTest extends TestCase
         self::assertStringContainsString('w01 finished', $screen);
         self::assertStringContainsString('top stale keys (still stale):', $screen);
         self::assertStringContainsString('worst stale keys seen:', $screen);
+        self::assertStringContainsString('wk  key                  cls', $screen);
         self::assertStringContainsString('fuzz:string:3', $screen);
         self::assertStringContainsString('stale_regression', $screen);
-        self::assertStringContainsString('streak=4', $screen);
-        self::assertStringContainsString('last=', $screen);
+        self::assertStringContainsString(' 4 ', $screen);
     }
 }

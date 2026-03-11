@@ -191,7 +191,9 @@ final class StatusPageRenderer
             return ['  none yet'];
         }
 
-        $lines = [];
+        $lines = [
+            '  wk  key                  cls                        st   sk  last     age',
+        ];
         foreach (array_slice($entries, 0, 8) as $entry) {
             $lastSeenAt = $entry['last_seen_at'] ?? null;
             $lastSeen = $lastSeenAt !== null
@@ -199,12 +201,12 @@ final class StatusPageRenderer
                 : 'n/a';
 
             $lines[] = sprintf(
-                '  w%02d %-20s class=%-26s steps=%-4s streak=%-3d last=%-8s age=%s',
+                '  w%02d %-20s %-26s %-4s %-3d %-8s %s',
                 (int) $entry['worker_index'],
                 $this->clip($entry['key'], 20),
                 $this->clip($entry['classification'], 26),
                 is_int($entry['steps_behind'] ?? null) ? (string) $entry['steps_behind'] : 'n/a',
-                (string) $entry['consecutive_stale'],
+                $entry['consecutive_stale'],
                 $lastSeen,
                 $entry['age'],
             );

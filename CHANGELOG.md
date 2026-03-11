@@ -24,3 +24,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Normalized negative numeric CLI option values in `bin/fuzz` so `--ops -1` is parsed and validated correctly.
 - Workers now reconnect and retry once after routine Redis connection failures so killed clients do not immediately abort fuzz runs.
+- Staleness-mode "still stale" tracking now drops keys from the live leaderboard as soon as the same worker mutates them, so old stale observations do not linger until a later fresh read happens to clear them.
+- The staleness AFL leaderboards now use compact column headers instead of repeating `class=`, `steps=`, `streak=`, `last=`, and `age=` on every row.
