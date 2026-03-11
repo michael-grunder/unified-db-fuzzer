@@ -59,6 +59,8 @@ final class StalenessWorkerStatistics
 
     public function observe(ObservedStaleness $observation, bool $hardFailure): void
     {
+        $observation = $observation->with(debug: $observation->debug + ['last_seen_at' => microtime(true)]);
+
         if ($observation->stepsBehind !== null && $observation->stepsBehind > 0) {
             $this->staleReads++;
         }
@@ -223,7 +225,7 @@ final class StalenessWorkerStatistics
 
     /**
      * @param list<ObservedStaleness> $observations
-     * @return list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int}>
+     * @return list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int, last_seen_at: float|null}>
      */
     private function formatObservations(array $observations, WorkOptions $options): array
     {
@@ -235,6 +237,7 @@ final class StalenessWorkerStatistics
                 'age' => StatusFormatter::formatAgeValue($observation->ageNs, $options->ageUnit),
                 'regression' => $observation->regression,
                 'consecutive_stale' => (int) ($observation->debug['stale_streak'] ?? 0),
+                'last_seen_at' => isset($observation->debug['last_seen_at']) ? (float) $observation->debug['last_seen_at'] : null,
             ],
             $observations,
         );

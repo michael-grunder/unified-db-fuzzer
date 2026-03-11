@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `bin/kill-clients` now defaults to killing only Relay connections detected from `CLIENT LIST`, with `--all-clients` available to target other client libraries too.
 - `bin/fuzz` worker logging now uses Monolog with a compact `[microtime level] message` format and supports `--log-file` to write logs to disk instead of stderr.
 - The staleness AFL view now separates keys that are still stale at the latest worker snapshot from the worst stale observations seen historically, and shows consecutive stale-read streaks in both tables.
+- The staleness AFL leaderboards now show `last=` alongside the stale streak so “still stale” rows visibly age when they are not being re-observed, instead of looking frozen.
 ### Fixed
 - Normalized negative numeric CLI option values in `bin/fuzz` so `--ops -1` is parsed and validated correctly.
 - Workers now reconnect and retry once after routine Redis connection failures so killed clients do not immediately abort fuzz runs.
-### Removed

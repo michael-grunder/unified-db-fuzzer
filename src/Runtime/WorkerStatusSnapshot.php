@@ -8,8 +8,8 @@ final readonly class WorkerStatusSnapshot
 {
     /**
      * @param array<string, int|float|string|null> $metrics
-     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int}> $topKeys
-     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int}> $currentTopKeys
+     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int, last_seen_at: float|null}> $topKeys
+     * @param list<array{key: string, classification: string, steps_behind: int|null, age: string, regression: bool, consecutive_stale: int, last_seen_at: float|null}> $currentTopKeys
      */
     public function __construct(
         public int $workerIndex,
