@@ -28,3 +28,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Staleness-mode "still stale" tracking now drops keys from the live leaderboard as soon as the same worker mutates them, so old stale observations do not linger until a later fresh read happens to clear them.
 - The staleness AFL leaderboards now use compact column headers instead of repeating `class=`, `steps=`, `streak=`, `last=`, and `age=` on every row.
 - Staleness workers now periodically reprobe keys that are still on their live stale list, so transient `stale_missing_after_create` misses can clear before they are treated as hard failures.
+- Transient and persistent stale-key ages now render as floating-point milliseconds in the AFL staleness views, even when the general `--age-unit` remains set to microseconds.

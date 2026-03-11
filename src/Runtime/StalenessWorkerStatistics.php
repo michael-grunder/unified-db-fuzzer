@@ -247,7 +247,7 @@ final class StalenessWorkerStatistics
                 'key' => $observation->key,
                 'classification' => $observation->classification,
                 'steps_behind' => $observation->stepsBehind,
-                'age' => StatusFormatter::formatAgeValue($observation->ageNs, $options->ageUnit),
+                'age' => StatusFormatter::formatStalenessAgeValue($observation->ageNs),
                 'regression' => $observation->regression,
                 'consecutive_stale' => (int) ($observation->debug['stale_streak'] ?? 0),
                 'last_seen_at' => isset($observation->debug['last_seen_at']) ? (float) $observation->debug['last_seen_at'] : null,

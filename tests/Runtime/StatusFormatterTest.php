@@ -21,4 +21,10 @@ final class StatusFormatterTest extends TestCase
 
         self::assertSame('string:3 age=1.500ms', StatusFormatter::formatAge($statistics, AgeUnit::Milliseconds));
     }
+
+    #[Test]
+    public function it_formats_staleness_ages_in_milliseconds(): void
+    {
+        self::assertSame('12.45ms', StatusFormatter::formatStalenessAgeValue(12_450_000));
+    }
 }

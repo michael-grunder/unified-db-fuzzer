@@ -35,6 +35,15 @@ final class StatusFormatter
         };
     }
 
+    public static function formatStalenessAgeValue(?int $ageNs): string
+    {
+        if ($ageNs === null) {
+            return 'n/a';
+        }
+
+        return sprintf('%.2fms', $ageNs / 1_000_000);
+    }
+
     public static function formatElapsed(float $seconds): string
     {
         if ($seconds < 1) {
